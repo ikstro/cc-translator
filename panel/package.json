@@ -1,0 +1,180 @@
+{
+  "name": "language-tutor-panel",
+  "displayName": "Language Tutor for Claude Code",
+  "description": "Learn a language while you work with Claude Code: every message in the language you learn, tap a sentence for its translation, corrections of what you write, read-aloud with word highlighting, word meanings on Shift+hover.",
+  "version": "0.7.0",
+  "publisher": "ikstro",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#3653C8",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ikstro/cc-translator"
+  },
+  "homepage": "https://github.com/ikstro/cc-translator#readme",
+  "bugs": {
+    "url": "https://github.com/ikstro/cc-translator/issues"
+  },
+  "keywords": [
+    "claude",
+    "claude code",
+    "language learning",
+    "english",
+    "translation",
+    "tutor",
+    "pronunciation",
+    "dictionary"
+  ],
+  "engines": {
+    "vscode": "^1.98.0"
+  },
+  "categories": [
+    "Education",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "languageTutor",
+          "title": "Tutor",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "languageTutor": [
+        {
+          "type": "webview",
+          "id": "languageTutor.panel",
+          "name": "Tutor",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "languageTutor.clear",
+        "title": "Tutor: Clear this session's history",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "languageTutor.stopSpeaking",
+        "title": "Tutor: Stop speaking",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "languageTutor.openPlan",
+        "title": "Tutor: Open the latest plan",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "languageTutor.translateSelection",
+        "title": "Tutor: Translate the selection",
+        "icon": "$(globe)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "languageTutor.translateSelection",
+          "when": "editorTextFocus",
+          "group": "navigation@9"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "languageTutor.openPlan",
+          "when": "view == languageTutor.panel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "languageTutor.clear",
+          "when": "view == languageTutor.panel",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Language Tutor",
+      "properties": {
+        "languageTutor.voice": {
+          "type": "string",
+          "default": "",
+          "description": "Name of the system voice used by the speaker button. Empty: the first voice that matches the language you learn."
+        },
+        "languageTutor.rate": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.5,
+          "maximum": 1.5,
+          "description": "Speech rate for the speaker button (1 = normal)."
+        },
+        "languageTutor.allSessions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the latest Claude Code session from any folder, not only from this workspace."
+        },
+        "languageTutor.wordHint": {
+          "type": "string",
+          "enum": [
+            "shift",
+            "hover",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Hold Shift and point at an English word to see its meanings; release Shift to hide them.",
+            "Point at a word to see its meanings, no key needed.",
+            "No word meanings."
+          ],
+          "default": "shift",
+          "description": "How the word card with dictionary meanings appears in the Tutor views."
+        },
+        "languageTutor.openPlan": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "manual"
+          ],
+          "enumDescriptions": [
+            "A plan Claude presents opens in its own tab beside the chat as soon as it arrives.",
+            "Plans wait in the History sheet and behind the \"Open the latest plan\" command."
+          ],
+          "default": "auto",
+          "description": "What happens when Claude presents a plan in plan mode."
+        },
+        "languageTutor.downloadDictionaries": {
+          "type": "boolean",
+          "default": true,
+          "description": "Download the word dictionary for your language (English → it) from the project's GitHub release the first time you look a word up. English → Russian ships with the extension."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run",
+    "package": "npm run build && vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build",
+    "dict": "node scripts/build-dict.mjs ru"
+  },
+  "dependencies": {
+    "@vscode/codicons": "^0.0.36",
+    "marked": "^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.98.0",
+    "@vscode/vsce": "^3.3.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

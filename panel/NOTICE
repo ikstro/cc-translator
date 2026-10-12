@@ -1,0 +1,11 @@
+Language Tutor Panel
+Code: MIT License (see LICENSE in the repository root).
+
+Word dictionary (media/dict/*.json)
+  Built by scripts/build-dict.mjs from WikDict (https://www.wikdict.com) by Karl Bartel,
+  data from Wiktionary (https://www.wiktionary.org) via DBnary,
+  licensed under the Creative Commons Attribution-ShareAlike License
+  (https://creativecommons.org/licenses/by-sa/4.0/).
+  The dictionary files are a derived work and are shared under the same license.
+
+Icons: @vscode/codicons, Creative Commons Attribution 4.0 (fonts) / MIT (code).

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+media/panel.js
+media/codicon.css
+media/codicon.ttf
+*.vsix
+.cache/

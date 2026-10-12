@@ -1,0 +1,18 @@
+{
+  "name": "cc-translator",
+  "owner": {
+    "name": "ikstro"
+  },
+  "metadata": {
+    "description": "Language tutor for Claude Code: learn a language while you work."
+  },
+  "plugins": [
+    {
+      "name": "language-tutor",
+      "source": "./plugin",
+      "description": "Turns the conversation into the language you learn, with translations and corrections, for the Tutor panel in VS Code. Claude's own answers are never changed.",
+      "homepage": "https://github.com/ikstro/cc-translator#readme",
+      "license": "MIT"
+    }
+  ]
+}
