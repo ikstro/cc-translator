@@ -1,12 +1,16 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 import {
+  addUsage,
   appendLine,
+  dayOf,
   isHumanPrompt,
   isPlanPath,
+  learnerPathFor,
   panelCoverage,
   panelsDirFor,
   parseEntries,
+  parseLedger,
   parseRequests,
   parseTextRequests,
   parseTutorReply,
@@ -14,7 +18,9 @@ import {
   sessionPathFor,
   settingsPathFor,
   stripMachineBlocks,
+  usagePathFor,
   type FeedEntry,
+  type Ledger,
   type PanelBeat,
 } from './feed'
 import { mostlyCopies, mostlyInScript, scriptForLanguage, sideOf, userRoute } from './script'
@@ -52,6 +58,8 @@ const attempted = new Map<string, number>()
 let working = false
 let ticks = 0
 let seq = 0
+/** Each session's tutor tokens by day, kept here and written whole after every call. */
+const ledgers = new Map<string, Ledger>()
 /** The plan file the model last wrote in this process: read when it presents the plan. */
 let lastPlanPath: string | undefined
 
@@ -249,7 +257,39 @@ async function complete($: EngineInterface, s: Settings, job: Job, system: strin
     input: u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens,
     output: u.output_tokens,
   })
+  await countUsage($, job.sessionId, u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens, u.output_tokens)
   return r.isAnswered ? r.text : undefined
+}
+
+/**
+ * Adds one call to the session's ledger in `usage/`, which outlives the
+ * session file so the panel can show today, 7 and 30 days per project.
+ */
+async function countUsage($: EngineInterface, sessionId: string, input: number, output: number): Promise<void> {
+  const path = usagePathFor(await homeOf($), sessionId)
+  if (!path) return
+  const run = async () => {
+    let ledger = ledgers.get(sessionId)
+    if (!ledger) {
+      const project = await sessionCwd($, sessionId)
+      let existing = ''
+      try {
+        existing = (await $.fs.read(path)) as string
+      } catch {
+        existing = ''
+      }
+      ledger = parseLedger(existing, project)
+    }
+    ledger = addUsage(ledger, dayOf(Date.now()), input, output)
+    ledgers.set(sessionId, ledger)
+    await $.fs.write(path, JSON.stringify(ledger) + '\n')
+  }
+  writeQueue = writeQueue.then(run, run)
+  try {
+    await writeQueue
+  } catch (error) {
+    $.ui.log(`language-tutor: usage write failed: ${String(error)}`, { to: 'debug' })
+  }
 }
 
 type Lines = (string | undefined)[]
@@ -361,6 +401,12 @@ async function runJob($: EngineInterface, job: Job): Promise<void> {
   }
 }
 
+/** Makes `folder` the project that learns; the panel of the window showing it takes over. */
+async function claimLearner($: EngineInterface, folder: string): Promise<void> {
+  const path = learnerPathFor(await homeOf($))
+  if (path) await $.fs.write(path, JSON.stringify({ folders: [folder], ts: Date.now() }) + '\n')
+}
+
 /** The plan file the model wrote, when it is there and has text. */
 async function readPlanFile($: EngineInterface): Promise<string | undefined> {
   if (!lastPlanPath) return undefined
@@ -397,6 +443,8 @@ export const register: Register = on => {
     const change = applyCommand(await readSettings($), e.args)
     if (!change.ok) return { text: change.error }
     if (change.changed) await writeSettings($, change.settings)
+    // Turned on from a session: its project is the one that learns, in whichever window shows it.
+    if (/^\s*on\b/i.test(e.args)) await claimLearner($, await sessionCwd($, await $.session.id()))
     $.ui.status(statusText(change.settings))
     return { text: change.note }
   })

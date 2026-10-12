@@ -6,6 +6,8 @@
 //   sessions/<session>.jsonl    one session's conversation and tutor results (plugin appends)
 //   requests/<session>.json     refs the reader asked to translate, and texts picked in an editor (panel writes)
 //   panels/<window>.json        heartbeat of each open Tutor panel (panel writes)
+//   learner.json                the project that learns: only its window's panel has the tutor translate
+//   usage/<session>.json        tokens the tutor used, per day, for the panel's totals (plugin writes)
 // Deleting is the panel's job: the plugin's file access cannot remove files.
 
 import type { Settings } from './settings'
@@ -60,6 +62,16 @@ export function requestsPathFor(home: string | undefined, sessionId: string): st
   return dir && safeId(sessionId) ? `${dir}/requests/${safeId(sessionId)}.json` : undefined
 }
 
+export function learnerPathFor(home: string | undefined): string | undefined {
+  const dir = tutorDir(home)
+  return dir ? `${dir}/learner.json` : undefined
+}
+
+export function usagePathFor(home: string | undefined, sessionId: string): string | undefined {
+  const dir = tutorDir(home)
+  return dir && safeId(sessionId) ? `${dir}/usage/${safeId(sessionId)}.json` : undefined
+}
+
 export function panelsDirFor(home: string | undefined): string | undefined {
   const dir = tutorDir(home)
   return dir ? `${dir}/panels` : undefined
@@ -90,12 +102,48 @@ export function parseEntries(content: string): FeedEntry[] {
 
 // ------------------------------------------------------------ panels
 
-export type PanelBeat = { folders?: unknown; visible?: unknown; ts?: unknown }
+/** `learning: false` is a panel on screen in a window that is not the one learning. */
+export type PanelBeat = { folders?: unknown; visible?: unknown; learning?: unknown; ts?: unknown }
 
 const STALE_MS = 90_000
 
 export function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+// ------------------------------------------------------------ usage
+
+export type DayUsage = { input: number; output: number; calls: number }
+/** One session's tutor tokens by local day, and the project it ran in. */
+export type Ledger = { project: string; days: Record<string, DayUsage> }
+
+/** The local calendar day of a moment, YYYY-MM-DD: how the panel groups usage. */
+export function dayOf(ms: number): string {
+  const d = new Date(ms)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+/** A ledger read back from its file; anything malformed starts it afresh. */
+export function parseLedger(text: string, project: string): Ledger {
+  try {
+    const raw = JSON.parse(text) as { project?: unknown; days?: unknown }
+    const days: Record<string, DayUsage> = {}
+    if (raw.days && typeof raw.days === 'object') {
+      for (const [day, u] of Object.entries(raw.days as Record<string, Partial<DayUsage>>)) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !u || typeof u !== 'object') continue
+        days[day] = { input: Number(u.input) || 0, output: Number(u.output) || 0, calls: Number(u.calls) || 0 }
+      }
+    }
+    return { project: typeof raw.project === 'string' ? raw.project : project, days }
+  } catch {
+    return { project, days: {} }
+  }
+}
+
+export function addUsage(ledger: Ledger, day: string, input: number, output: number): Ledger {
+  const was = ledger.days[day] ?? { input: 0, output: 0, calls: 0 }
+  return { ...ledger, days: { ...ledger.days, [day]: { input: was.input + input, output: was.output + output, calls: was.calls + 1 } } }
 }
 
 // ------------------------------------------------------------ plans
@@ -129,7 +177,7 @@ export function panelCoverage(beats: readonly PanelBeat[], cwd: string, now: num
     })
     if (!covers) continue
     open = true
-    if (beat.visible === true) visible = true
+    if (beat.visible === true && beat.learning !== false) visible = true
   }
   return { open, visible }
 }

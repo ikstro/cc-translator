@@ -624,6 +624,59 @@ body.no-voice [data-play] {
   font-size: 0.88em;
 }
 
+/* Tutor tokens: today, 7 and 30 days, then the projects that spent them. */
+.spend {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.spend-cell {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.spend-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.spend-label {
+  color: var(--muted);
+  font-size: 0.88em;
+}
+
+.spend-projects {
+  margin-top: 8px;
+}
+
+.spend-project {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.spend-project.current .spend-name {
+  font-weight: 600;
+}
+
+.spend-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spend-num {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Word card: hover any English word for its dictionary meanings. */
 ::highlight(tutor-hover) {
   background-color: color-mix(in srgb, var(--accent) 28%, transparent);

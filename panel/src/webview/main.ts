@@ -5,7 +5,19 @@
 // Markdown arrives rendered from the extension host.
 
 import { labelCode, langCode, scriptFor, scriptOf, voiceMatches } from '../languages'
-import type { EmptyReason, HostVoice, ToHost, ToView, TutorSettings, Usage, ViewBlock, ViewConfig, ViewExchange } from '../protocol'
+import type {
+  EmptyReason,
+  HostVoice,
+  LearningState,
+  ToHost,
+  ToView,
+  TutorSettings,
+  Usage,
+  UsageSummary,
+  ViewBlock,
+  ViewConfig,
+  ViewExchange,
+} from '../protocol'
 import { el, html, icon, setIcon } from './dom'
 import { WordHover } from './hover'
 import { Player } from './player'
@@ -32,6 +44,11 @@ const state = {
   settings: undefined as TutorSettings | undefined,
   config: { voice: '', rate: 1, wordHint: 'shift' } as ViewConfig,
   usage: { input: 0, output: 0, calls: 0 } as Usage,
+  totals: undefined as UsageSummary | undefined,
+  /** Whether this window learns; another window may, while this one only records. */
+  learning: { where: 'nowhere' } as LearningState,
+  /** This window's first folder. */
+  project: '',
   empty: undefined as EmptyReason,
   showAll: vscode.getState()?.showAll ?? false,
   hostVoices: undefined as HostVoice[] | undefined,
@@ -104,7 +121,7 @@ const root = document.getElementById('root') as HTMLDivElement
 
 const powerSwitch = el(
   'button',
-  { class: 'power', role: 'switch', 'aria-checked': 'false', 'aria-label': 'Tutor', onclick: () => setSettings({ enabled: !state.settings?.enabled }) },
+  { class: 'power', role: 'switch', 'aria-checked': 'false', 'aria-label': 'Tutor', onclick: () => post({ type: 'setLearning', on: !learningHere() }) },
   el('span', { class: 'switch', 'aria-hidden': 'true' }, el('span', { class: 'switch-thumb' })),
 )
 const chipLabel = el('span', { class: 'chip-label' }, '…')
@@ -117,12 +134,14 @@ const header =
     ? el('header', { class: 'bar' }, docTitle, el('span', { class: 'grow' }), showAllButton)
     : el('header', { class: 'bar' }, powerSwitch, chip, el('span', { class: 'grow' }), historyButton, showAllButton)
 
-const offBanner = el(
-  'div',
-  { class: 'banner', hidden: true },
-  el('span', { class: 'banner-text' }, 'The tutor is off. Claude answers as usual and nothing is translated.'),
-  el('button', { class: 'primary-btn', onclick: () => setSettings({ enabled: true }) }, 'Turn on'),
-)
+const offText = el('span', { class: 'banner-text' })
+const offButton = el('button', { class: 'primary-btn', onclick: () => post({ type: 'setLearning', on: true }) }, 'Turn on')
+const offBanner = el('div', { class: 'banner', hidden: true }, offText, offButton)
+
+/** The tutor translates in this window: it is on, and this window's project is the one learning. */
+function learningHere(): boolean {
+  return (state.settings?.enabled ?? false) && state.learning.where === 'here'
+}
 const crumb = el(
   'div',
   { class: 'crumb', hidden: true },
@@ -164,7 +183,7 @@ function latestConversation(): ViewExchange | undefined {
 
 function renderChrome(): void {
   const s = state.settings
-  const on = s?.enabled ?? false
+  const on = learningHere()
   showAllButton.textContent = labelCode(s?.native)
   showAllButton.setAttribute('aria-pressed', String(state.showAll))
   showAllButton.title = state.showAll ? `Hide the ${s?.native ?? ''} lines` : `Show every ${s?.native ?? ''} line`
@@ -197,8 +216,18 @@ function renderChrome(): void {
   powerSwitch.title = on ? 'Turn the tutor off' : 'Turn the tutor on'
   chipLabel.textContent = s ? `${s.target} → ${s.native}${s.level === 'off' ? '' : ' · ' + s.level}` : '…'
   historyButton.toggleAttribute('disabled', state.exchanges.length < 2)
-  document.body.classList.toggle('is-off', state.received && !on)
+  // Learning in another window: this one still records, and a message here is translated on a tap.
+  const elsewhere = (s?.enabled ?? false) && state.learning.where === 'elsewhere'
+  document.body.classList.toggle('is-off', state.received && !on && !elsewhere)
   offBanner.hidden = !state.received || on
+  if (elsewhere) {
+    const where = state.learning.project ? `in ${state.learning.project}` : 'in another window'
+    offText.textContent = `Learning is on ${where}. Here, tap Translate under a message to translate it.`
+    offButton.textContent = 'Learn here'
+  } else {
+    offText.textContent = 'The tutor is off. Claude answers as usual and nothing is translated.'
+    offButton.textContent = 'Turn on'
+  }
 
   const isEmpty = state.received && on && state.exchanges.length === 0
   emptyState.hidden = !isEmpty
@@ -386,7 +415,7 @@ function autoRead(): void {
   }
   if (newest.id === state.lastNewest) return
   state.lastNewest = newest.id
-  if (first || !state.settings?.autoRead || !state.settings.enabled || state.viewing) return
+  if (first || !state.settings?.autoRead || !learningHere() || state.viewing) return
   const article = list.querySelector<HTMLElement>(`article[data-id="${CSS.escape(newest.id)}"]`)
   if (article) player.play(`m:${newest.id}`, [...article.querySelectorAll<HTMLElement>('.body span.s')], { follow: true })
 }
@@ -536,6 +565,8 @@ function sheetContext(): SheetContext | undefined {
     settings,
     config: state.config,
     usage: state.usage,
+    totals: state.totals,
+    project: state.project,
     voicesFor,
     hasVoice,
     platform: state.platform,
@@ -648,6 +679,9 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
       applySettings(m.settings)
       state.config = m.config
       state.usage = m.usage
+      state.totals = m.totals
+      state.learning = m.learning
+      state.project = m.project
       state.empty = m.empty
       renderChrome()
       renderList()

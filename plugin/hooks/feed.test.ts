@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { isHumanPrompt, isPlanPath, panelCoverage, parseRequests, parseTextRequests, parseTutorReply, sessionPathFor, stripMachineBlocks } from './feed'
+import { addUsage, dayOf, isHumanPrompt, isPlanPath, panelCoverage, parseLedger, parseRequests, parseTextRequests, parseTutorReply, sessionPathFor, stripMachineBlocks } from './feed'
 import { mostlyCopies, mostlyInScript, scriptForLanguage, scriptOf, sideOf, userRoute } from './script'
 
 describe('panel coverage', () => {
@@ -15,6 +15,29 @@ describe('panel coverage', () => {
     expect(panelCoverage([{ folders: ['C:/p'], visible: false, ts: now }], 'C:/p', now)).toEqual({ open: true, visible: false })
     expect(panelCoverage([{ folders: ['C:/p'], visible: true, ts: now - 120_000 }], 'C:/p', now)).toEqual({ open: false, visible: false })
     expect(panelCoverage([{ folders: 'C:/p', ts: now }], 'C:/p', now).open).toBe(false)
+  })
+
+  test('a panel on screen in a window that is not learning does not translate', async () => {
+    const shown = { folders: ['C:/p'], visible: true, ts: now }
+    expect(panelCoverage([{ ...shown, learning: false }], 'C:/p', now)).toEqual({ open: true, visible: false })
+    expect(panelCoverage([{ ...shown, learning: true }], 'C:/p', now)).toEqual({ open: true, visible: true })
+    // A panel from before learning windows existed.
+    expect(panelCoverage([shown], 'C:/p', now)).toEqual({ open: true, visible: true })
+  })
+})
+
+describe('usage ledger', () => {
+  test('adds calls per local day and survives a malformed file', async () => {
+    let ledger = parseLedger('not json', 'C:/p')
+    expect(ledger).toEqual({ project: 'C:/p', days: {} })
+    ledger = addUsage(ledger, '2026-10-12', 300, 50)
+    ledger = addUsage(ledger, '2026-10-12', 200, 20)
+    ledger = addUsage(ledger, '2026-10-13', 10, 1)
+    expect(ledger.days['2026-10-12']).toEqual({ input: 500, output: 70, calls: 2 })
+    const back = parseLedger(JSON.stringify({ ...ledger, days: { ...ledger.days, junk: { input: 1 } } }), 'C:/other')
+    expect(back.project).toBe('C:/p')
+    expect(Object.keys(back.days)).toEqual(['2026-10-12', '2026-10-13'])
+    expect(dayOf(new Date(2026, 0, 5, 23, 30).getTime())).toBe('2026-01-05')
   })
 })
 
@@ -79,6 +102,36 @@ describe('the person\'s own words', () => {
     expect(userRoute('Ich möchte sehen, wie es funktioniert', 'English', 'Russian')).toBe('tutor-decides')
     expect(userRoute('Хочу перевірити, як це працює', 'English', 'Ukrainian')).toBe('to-target')
   })
+})
+
+describe('language pairs', () => {
+  // [learned, native, a message in the native language, a message in the learned one, what the script tells]
+  const pairs: [string, string, string, string, 'by script' | 'by the tutor'][] = [
+    ['Polish', 'Russian', 'Проверь, пожалуйста, этот файл.', 'Sprawdź proszę ten plik.', 'by script'],
+    ['English', 'Russian', 'Проверь, пожалуйста, этот файл.', 'Please check this file.', 'by script'],
+    ['Japanese', 'Russian', 'Проверь, пожалуйста, этот файл.', 'このファイルを確認してください。', 'by script'],
+    ['English', 'Arabic', 'من فضلك تحقق من هذا الملف.', 'Please check this file.', 'by script'],
+    ['Greek', 'English', 'Please check this file.', 'Παρακαλώ ελέγξτε αυτό το αρχείο.', 'by script'],
+    ['Chinese', 'Japanese', 'このファイルを確認してください。', '请检查这个文件。', 'by script'],
+    ['German', 'English', 'Please check this file.', 'Bitte prüfe diese Datei.', 'by the tutor'],
+    ['Spanish', 'Polish', 'Sprawdź proszę ten plik.', 'Por favor, revisa este archivo.', 'by the tutor'],
+  ]
+
+  for (const [target, native, inNative, inTarget, how] of pairs) {
+    test(`${target} for a ${native} speaker: ${how}`, async () => {
+      if (how === 'by script') {
+        expect(userRoute(inNative, target, native)).toBe('to-target')
+        expect(userRoute(inTarget, target, native)).toBe('tutor-decides')
+        expect(sideOf(inNative, target, native)).toBe('native')
+        expect(sideOf(inTarget, target, native)).toBe('target')
+      } else {
+        // Same script: the tutor model names the language itself.
+        expect(userRoute(inNative, target, native)).toBe('tutor-decides')
+        expect(sideOf(inNative, target, native)).toBeUndefined()
+        expect(sideOf(inTarget, target, native)).toBeUndefined()
+      }
+    })
+  }
 })
 
 describe('direction', () => {

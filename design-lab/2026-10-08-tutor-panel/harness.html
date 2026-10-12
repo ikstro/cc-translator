@@ -74,7 +74,11 @@
 </head>
 <body>
 <div id="root"></div>
-<script src="fixture.js"></script>
+<script>
+  // ?fixture=langs loads fixture-langs.js instead of fixture.js.
+  const name = new URLSearchParams(location.search).get('fixture')
+  document.write(`<script src="${name ? `fixture-${name.replace(/[^a-z0-9-]/gi, '')}.js` : 'fixture.js'}"><\/script>`)
+</script>
 <script src="lemma.js"></script>
 <script>
   // Stands in for the extension host: answers "ready" with the fixture, and
@@ -89,7 +93,22 @@
     setState: () => undefined,
     postMessage(message) {
       window.HARNESS.posted.push(message)
-      const session = () => send({ type: 'session', exchanges: fixture.exchanges, settings: fixture.settings, usage: fixture.usage, empty: undefined, config: { voice: '', rate: 1, wordHint: 'shift' } })
+      const totals = fixture.totals ?? {
+        today: { tokens: 4300, calls: 9 },
+        week: { tokens: 51200, calls: 112 },
+        month: { tokens: 160400, calls: 371 },
+        projects: [
+          { name: 'CC-translator', path: 'E:/Work/CC-translator', tokens: 120300, calls: 280 },
+          { name: 'Wind to ride', path: 'E:/Work/Wind to ride', tokens: 40100, calls: 91 },
+        ],
+      }
+      const learning = () => (fixture.settings.enabled ? fixture.learning ?? { where: 'here' } : { where: 'nowhere' })
+      const session = () => send({ type: 'session', exchanges: fixture.exchanges, settings: fixture.settings, usage: fixture.usage, totals, learning: learning(), project: 'E:/Work/CC-translator', empty: undefined, config: { voice: '', rate: 1, wordHint: 'shift' } })
+      if (message.type === 'setLearning') {
+        fixture.settings = { ...fixture.settings, enabled: message.on }
+        if (message.on) fixture.learning = { where: 'here' }
+        session()
+      }
       if (message.type === 'translate') {
         const block = fixture.exchanges.flatMap(x => x.blocks).find(b => b.id === message.ref)
         if (block) {
@@ -108,7 +127,7 @@
       }
       if (message.type === 'ready') {
         session()
-        send({ type: 'hostVoices', canSpeak: true, voices: [
+        send({ type: 'hostVoices', canSpeak: true, platform: 'win32', voices: [
           { name: 'Microsoft David Desktop', lang: 'en-US' },
           { name: 'Microsoft Zira Desktop', lang: 'en-US' },
           { name: 'Microsoft Mark', lang: 'en-US' },

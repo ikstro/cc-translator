@@ -36,9 +36,13 @@ Cursor and VSCodium find it on Open VSX under the same name. Without a marketpla
 
 ## Use
 
-Work as usual. While the Tutor panel is on screen, every message shows up in it:
+Work as usual. While the Tutor panel is on screen, every message shows up in it.
 
-- **The panel shows the latest exchange**: your message and Claude's replies until your next message. The clock icon opens this session's **History**; tap an earlier exchange to see it, **← Latest** returns.
+**One window learns at a time.** Turning the tutor on in a window makes its project the one that learns; any other VS Code window stops translating by itself and shows *Learning is on in <project> · Learn here*. There, messages are still collected and each gets a **Translate** button, so nothing is spent unless you tap. `/tutor on` in Claude Code makes that session's project the learning one.
+
+- **The panel shows the latest exchange**
+
+- The latest exchange is your message and Claude's replies until your next message. The clock icon opens this session's **History**; tap an earlier exchange to see it, **← Latest** returns.
 - **Your message comes first in the language you learn.** Written in your language, it shows as the tutor's version, sentence by sentence; tap a sentence to see what you wrote. Written in the language you learn, it shows corrected (`~~wrong~~ **right**` and one line why), or **✓ No mistakes**.
 - **Claude's replies are in the language you learn**, whatever language the chat used. Tap a sentence for its translation; the button with your language code shows every translation. ▶ next to a translation reads that sentence, **Listen** reads the whole message; while it reads, the button becomes **Stop** and the spoken word is highlighted.
 - **Hold Shift and point at a word** (mouse or pen) for its dictionary meanings: the base form ("show, from showing") and up to three translations per part of speech. These are dictionary meanings, not the meaning in that exact sentence; the sentence translation gives that. Works when you learn English (see [Word dictionaries](#word-dictionaries)). The setting `languageTutor.wordHint` makes it plain hover (`hover`) or turns it off.
@@ -80,13 +84,14 @@ Word meanings come from offline dictionaries built from [WikDict](https://www.wi
 ## What it costs
 
 - **Your main conversation is untouched.** The plugin adds nothing to the prompt and changes no message: it only reads each message after it is stored. Claude answers in whatever language its own settings say.
-- **The tutor model runs only while a Tutor view is on screen, and only for its project.** While the tutor is on, every session's messages are copied to a small file (deleted after a day), so nothing is lost when you open the panel later; they are translated only while the panel or one of its tabs is visible for that project. Messages that arrived otherwise get a **Translate** button. Other projects and background sessions cost no tokens.
-- **One call per message** (a long reply or a plan goes in batches of about 5,000 characters): about the text's length in and out, on Haiku by default (Sonnet for better explanations). The settings sheet shows how many tokens this session used.
+- **The tutor model runs only in the learning window, while its Tutor view is on screen.** While the tutor is on, every session's messages are copied to a small file (deleted after a day), so nothing is lost when you open the panel later; they are translated only while the learning project's panel or one of its tabs is visible. Messages that arrived otherwise, or in other windows, get a **Translate** button. Other projects and background sessions cost no tokens.
+- **One call per message** (a long reply or a plan goes in batches of about 5,000 characters): about the text's length in and out, on Haiku by default (Sonnet for better explanations).
+- **The settings sheet counts the tutor's tokens**: today, the last 7 and 30 days, and per project over 30 days (kept in `~/.claude/language-tutor/usage/`, one small file per session, deleted after 31 days).
 - **Voices and word meanings** cost no tokens.
 
 ## Privacy
 
-- Files live in `~/.claude/language-tutor/`: `settings.json`, one file per session in `sessions/`, Translate taps in `requests/`, and a small heartbeat per open panel in `panels/`. Session files untouched for a day are deleted; Clear deletes one at once.
+- Files live in `~/.claude/language-tutor/`: `settings.json`, `learner.json` (the learning project), one file per session in `sessions/`, token counts in `usage/`, Translate taps in `requests/`, and a small heartbeat per open panel in `panels/`. Session files untouched for a day are deleted; Clear deletes one at once.
 - Only what you typed, Claude's text replies, the plans it presents and the texts you pick are copied: no tool output, no other file contents. Background notices, scheduled runs and messages from other sessions are skipped.
 - The text goes to the tutor model on your own Claude account; no other service sees it. The only other network request is the one-time dictionary download from GitHub, which sends nothing but the file name.
 - The panel never runs code from a message: everything is escaped, the webview allows only its own script, and remote images and pages do not load.

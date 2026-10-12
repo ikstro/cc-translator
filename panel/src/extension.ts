@@ -6,6 +6,7 @@ import * as vscode from 'vscode'
 
 import { DictionaryStore } from './dictstore'
 import { defaultNative, langCode, scriptFor, scriptOf } from './languages'
+import { learnsHere, learningState, parseLearner, type Learner, type LearningState } from './learner'
 import { lookup } from './lemma'
 import type { EmptyReason, ExchangeKind, GlossMissing, HostVoice, ToHost, ToView, ViewBlock, ViewConfig, ViewExchange } from './protocol'
 import {
@@ -21,6 +22,7 @@ import {
 } from './render'
 import { groupExchanges, indexResults, kindLabel, stateOf, titleOf, type Results } from './session'
 import { Speaker, listHostVoices } from './speech'
+import { EMPTY_SUMMARY, parseLedger, summarize, type Ledger, type UsageSummary } from './usage'
 
 // ~/.claude/language-tutor/
 //   settings.json               shared with the Claude Code plugin
@@ -36,6 +38,7 @@ import { Speaker, listHostVoices } from './speech'
 const VIEW_ID = 'languageTutor.panel'
 const DOCUMENT_VIEW = 'languageTutor.document'
 const SETTINGS_NAME = 'settings.json'
+const LEARNER_NAME = 'learner.json'
 const MAX_EXCHANGES = 100
 const BEAT_MS = 30_000
 const RETENTION_MS = 24 * 60 * 60 * 1000
@@ -55,6 +58,9 @@ const baseDir = () => path.join(os.homedir(), '.claude', 'language-tutor')
 const sessionsDir = () => path.join(baseDir(), 'sessions')
 const requestsDir = () => path.join(baseDir(), 'requests')
 const panelsDir = () => path.join(baseDir(), 'panels')
+const usageDir = () => path.join(baseDir(), 'usage')
+/** Token ledgers are kept for the 30-day total. */
+const USAGE_RETENTION_MS = 31 * 24 * 60 * 60 * 1000
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new TutorViewProvider(context)
@@ -92,6 +98,8 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
   private readonly autoOpened = new Set<string>()
   private readonly startedAt = Date.now()
   private readonly dictionaries: DictionaryStore
+  /** Token ledgers read so far, by file, with the time they were written. */
+  private readonly ledgers = new Map<string, { mtimeMs: number; ledger: Ledger | undefined }>()
   /** The webview that asked to speak: word positions go back to it. */
   private speakingTo: vscode.Webview | undefined
   private readonly speaker = new Speaker({
@@ -198,7 +206,9 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
     const visible = this.view?.visible === true || [...this.documents.values()].some(p => p.visible)
     try {
       fs.mkdirSync(panelsDir(), { recursive: true })
-      fs.writeFileSync(this.beatPath(), JSON.stringify({ folders, visible, ts: Date.now() }))
+      // `learning`: only the window of the learning project has the tutor translate.
+      const learning = learnsHere(this.readLearner(), folders)
+      fs.writeFileSync(this.beatPath(), JSON.stringify({ folders, visible, learning, ts: Date.now() }))
     } catch {
       // the plugin then treats the panel as closed
     }
@@ -232,6 +242,7 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
     sweep(sessionsDir(), RETENTION_MS)
     sweep(requestsDir(), RETENTION_MS)
     sweep(panelsDir(), 10 * 60 * 1000)
+    sweep(usageDir(), USAGE_RETENTION_MS)
     try {
       fs.unlinkSync(path.join(baseDir(), 'feed.jsonl'))
     } catch {
@@ -242,11 +253,16 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
   private watch(): void {
     for (const w of this.watchers) w.close()
     this.watchers = []
-    for (const dir of [baseDir(), sessionsDir()]) {
+    // usage/ holds `<session>.json` ledgers: a new one updates the token totals.
+    for (const dir of [baseDir(), sessionsDir(), usageDir()]) {
       try {
         fs.mkdirSync(dir, { recursive: true })
         const w = fs.watch(dir, { persistent: false }, (_event, name) => {
-          if (!name || name === SETTINGS_NAME || name.endsWith('.jsonl')) this.schedule()
+          if (name === LEARNER_NAME) {
+            // Learning moved to or from this window: tell the plugin at once, not at the next beat.
+            this.writeBeat()
+            this.schedule()
+          } else if (!name || name.endsWith('.json') || name.endsWith('.jsonl')) this.schedule()
         })
         w.on('error', () => undefined)
         this.watchers.push(w)
@@ -259,6 +275,79 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
   private schedule(): void {
     if (this.timer) clearTimeout(this.timer)
     this.timer = setTimeout(() => this.push(), 120)
+  }
+
+  private readLearner(): Learner | undefined {
+    try {
+      return parseLearner(fs.readFileSync(path.join(baseDir(), LEARNER_NAME), 'utf8'))
+    } catch {
+      return undefined
+    }
+  }
+
+  private windowFolders(): string[] {
+    return (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath)
+  }
+
+  /**
+   * Turns learning on in this window (and so off in any other) or off
+   * everywhere. On a tutor switched on before learning windows existed, the
+   * first window to show its panel takes it.
+   */
+  private setLearning(on: boolean): void {
+    if (on && !this.claimLearning()) return
+    this.writeSettings({ enabled: on })
+  }
+
+  /** Makes this window's project the one that learns. */
+  private claimLearning(): boolean {
+    const folders = this.windowFolders()
+    if (folders.length === 0) {
+      void vscode.window.showInformationMessage('Tutor: open a folder first; learning follows the project.')
+      return false
+    }
+    try {
+      fs.mkdirSync(baseDir(), { recursive: true })
+      fs.writeFileSync(path.join(baseDir(), LEARNER_NAME), JSON.stringify({ folders, ts: Date.now() }) + '\n', 'utf8')
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Tutor: could not save where learning is. ${String(error)}`)
+      return false
+    }
+    this.writeBeat()
+    return true
+  }
+
+  private learning(settings: TutorSettings): LearningState {
+    const learner = this.readLearner()
+    if (settings.enabled && !learner && this.windowFolders().length > 0 && this.claimLearning()) return { where: 'here' }
+    return learningState(settings.enabled, learner, this.windowFolders())
+  }
+
+  /** Tokens the tutor used, from the plugin's ledgers in usage/. */
+  private usageSummary(): UsageSummary {
+    const ledgers: Ledger[] = []
+    try {
+      for (const name of fs.readdirSync(usageDir())) {
+        if (!name.endsWith('.json')) continue
+        const file = path.join(usageDir(), name)
+        try {
+          const mtimeMs = fs.statSync(file).mtimeMs
+          const cached = this.ledgers.get(file)
+          if (cached && cached.mtimeMs === mtimeMs) {
+            if (cached.ledger) ledgers.push(cached.ledger)
+            continue
+          }
+          const ledger = parseLedger(fs.readFileSync(file, 'utf8'))
+          this.ledgers.set(file, { mtimeMs, ledger })
+          if (ledger) ledgers.push(ledger)
+        } catch {
+          // being written: the next push reads it
+        }
+      }
+    } catch {
+      return EMPTY_SUMMARY
+    }
+    return summarize(ledgers, Date.now())
   }
 
   private readSettings(): TutorSettings {
@@ -467,6 +556,9 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
       case 'setSettings':
         this.writeSettings(message.patch)
         return
+      case 'setLearning':
+        this.setLearning(message.on)
+        return
       case 'setVoiceConfig': {
         const c = vscode.workspace.getConfiguration('languageTutor')
         if (message.voice !== undefined) void c.update('voice', message.voice, vscode.ConfigurationTarget.Global)
@@ -571,7 +663,17 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
     if (this.view) {
       const exchanges = all.slice(-MAX_EXCHANGES)
       const empty: EmptyReason = exchanges.length === 0 ? 'no-session' : undefined
-      this.post(this.view.webview, { type: 'session', exchanges, settings, usage: results.usage, empty, config })
+      this.post(this.view.webview, {
+        type: 'session',
+        exchanges,
+        settings,
+        usage: results.usage,
+        totals: this.usageSummary(),
+        learning: this.learning(settings),
+        project: this.windowFolders()[0] ?? '',
+        empty,
+        config,
+      })
     }
     for (const [id, panel] of this.documents) {
       const exchange = all.find(x => x.id === id)

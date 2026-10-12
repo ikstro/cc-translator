@@ -3,8 +3,10 @@
 import type { Gloss } from './lemma'
 import type { BlockState, ExchangeKind } from './session'
 import type { TutorSettings } from './render'
+import type { LearningState } from './learner'
+import type { UsageSummary } from './usage'
 
-export type { TutorSettings, BlockState, ExchangeKind, Gloss }
+export type { TutorSettings, BlockState, ExchangeKind, Gloss, LearningState, UsageSummary }
 
 export type ViewBlock = {
   id: string
@@ -50,7 +52,14 @@ export type ToView =
       type: 'session'
       exchanges: ViewExchange[]
       settings: TutorSettings
+      /** This session's tutor calls. */
       usage: Usage
+      /** Tutor tokens today, 7 and 30 days, and per project. */
+      totals: UsageSummary
+      /** Whether this window learns, another one does, or none (the tutor is off). */
+      learning: LearningState
+      /** This window's first folder, to mark its row among the projects. */
+      project: string
       empty: EmptyReason
       config: ViewConfig
     }
@@ -70,6 +79,8 @@ export type ToHost =
   | { type: 'speak'; id: number; items: string[]; lang: string; separator: string }
   | { type: 'stop' }
   | { type: 'setSettings'; patch: Partial<TutorSettings> }
+  /** On: this window's project learns (any other window stops). Off: the tutor is off everywhere. */
+  | { type: 'setLearning'; on: boolean }
   | { type: 'setVoiceConfig'; voice?: string; rate?: number }
   | { type: 'openSpeechSettings' }
   | { type: 'translate'; ref: string }

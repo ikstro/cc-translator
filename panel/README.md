@@ -30,6 +30,8 @@ The panel shows what the **language-tutor** plugin writes. Install it in Claude 
 
 Everything works with a pen: tap to translate, nothing depends on hovering.
 
+**One window learns at a time.** Turning the tutor on in a window makes its project the learning one; other windows show *Learning is on in … · Learn here* and translate a message only when you tap Translate. The settings sheet shows the tutor's tokens today, over 7 and 30 days, and per project.
+
 ## Voices
 
 Reading aloud uses the voices installed on your computer, free and offline. If the language you learn has none, the panel says so:

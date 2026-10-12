@@ -6,13 +6,13 @@ describe('messageHtml', () => {
   test('wraps a translated sentence, adds its translation line, keeps list markers outside', () => {
     const html = messageHtml('1. Open the **menu**. ||| Открой меню.\n')
     expect(html).toContain('<ol>')
-    expect(html).toContain('<span class="s" tabindex="0">Open the <strong>menu</strong>.</span>')
-    expect(html).toContain('<span class="tr"><span class="tr-text">Открой меню.</span><button class="icon-btn play" data-play="sentence"')
+    expect(html).toContain('<span class="s" tabindex="0" dir="auto">Open the <strong>menu</strong>.</span>')
+    expect(html).toContain('<span class="tr"><span class="tr-text" dir="auto">Открой меню.</span><button class="icon-btn play" data-play="sentence"')
   })
 
   test('an untranslated line is still a sentence, with no translation line', () => {
     const html = messageHtml('Plain line\n')
-    expect(html).toContain('<span class="s" tabindex="0">Plain line</span>')
+    expect(html).toContain('<span class="s" tabindex="0" dir="auto">Plain line</span>')
     expect(html).not.toContain('class="tr"')
   })
 
@@ -26,13 +26,13 @@ describe('messageHtml', () => {
   test('an old native-first pair is turned round so English is on the left', () => {
     const o = { target: 'Latin', native: 'Cyrillic' } as const
     const html = messageHtml('- Открой меню. ||| Open the menu.\nRun it. ||| Запусти.\n', o)
-    expect(html).toContain('<span class="s" tabindex="0">Open the menu.</span><span class="tr"><span class="tr-text">Открой меню.</span>')
-    expect(html).toContain('<span class="s" tabindex="0">Run it.</span><span class="tr"><span class="tr-text">Запусти.</span>')
+    expect(html).toContain('<span class="s" tabindex="0" dir="auto">Open the menu.</span><span class="tr"><span class="tr-text" dir="auto">Открой меню.</span>')
+    expect(html).toContain('<span class="s" tabindex="0" dir="auto">Run it.</span><span class="tr"><span class="tr-text" dir="auto">Запусти.</span>')
     expect(html).toContain('<li>')
   })
 
   test('headings keep their level', () => {
-    expect(messageHtml('## Steps ||| Шаги\n')).toMatch(/<h2[^>]*><span class="s" tabindex="0">Steps<\/span><span class="tr">/)
+    expect(messageHtml('## Steps ||| Шаги\n')).toMatch(/<h2[^>]*><span class="s" tabindex="0" dir="auto">Steps<\/span><span class="tr">/)
   })
 })
 
@@ -42,7 +42,7 @@ describe('tutorHtml', () => {
   })
 
   test('how to say it becomes sentences to hear', () => {
-    expect(tutorHtml('howToSay', 'Can we start it from the panel?')).toContain('<span class="s" tabindex="0">Can we start it from the panel?</span>')
+    expect(tutorHtml('howToSay', 'Can we start it from the panel?')).toContain('<span class="s" tabindex="0" dir="auto">Can we start it from the panel?</span>')
   })
 })
 

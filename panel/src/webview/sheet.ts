@@ -3,7 +3,7 @@
 // language rows open a searchable list inside the same sheet.
 
 import { LANGUAGES, findLanguage, langCode, searchLanguages, type Language } from '../languages'
-import type { TutorSettings, Usage, ViewConfig, ViewExchange } from '../protocol'
+import type { TutorSettings, Usage, UsageSummary, ViewConfig, ViewExchange } from '../protocol'
 import { el, icon } from './dom'
 import { canOpenSpeechSettings, voiceSteps } from './voices'
 
@@ -13,6 +13,10 @@ export type SheetContext = {
   settings: TutorSettings
   config: ViewConfig
   usage: Usage
+  /** Tutor tokens today, 7 and 30 days, and per project; undefined until the host says. */
+  totals: UsageSummary | undefined
+  /** This window's first folder, marked among the projects. */
+  project: string
   voicesFor: (code: string) => string[]
   hasVoice: (code: string) => boolean
   /** The host's system (win32, darwin, linux): which steps add a voice. */
@@ -183,6 +187,44 @@ export function sheetMain(ctx: SheetContext, sampleSlot: (sample: HTMLElement) =
     ),
   )
 
+  const totals = ctx.totals
+  const sameFolder = (a: string, b: string) => a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase()
+  const spending = el(
+    'div',
+    { class: 'group' },
+    el('div', { class: 'group-label' }, 'Tutor tokens'),
+    totals
+      ? el(
+          'div',
+          { class: 'spend' },
+          ...(
+            [
+              ['Today', totals.today],
+              ['7 days', totals.week],
+              ['30 days', totals.month],
+            ] as const
+          ).map(([label, t]) =>
+            el('div', { class: 'spend-cell', title: `${t.calls} ${t.calls === 1 ? 'call' : 'calls'}` }, el('span', { class: 'spend-value' }, tokens(t.tokens)), el('span', { class: 'spend-label' }, label)),
+          ),
+        )
+      : el('p', { class: 'hint' }, '…'),
+    totals && totals.projects.length > 0
+      ? el(
+          'div',
+          { class: 'spend-projects' },
+          el('div', { class: 'hint' }, 'By project, 30 days'),
+          ...totals.projects.slice(0, 6).map(p =>
+            el(
+              'div',
+              { class: `spend-project${sameFolder(p.path, ctx.project) ? ' current' : ''}`, title: p.path },
+              el('span', { class: 'spend-name' }, p.name),
+              el('span', { class: 'spend-num' }, `${tokens(p.tokens)} · ${p.calls} ${p.calls === 1 ? 'call' : 'calls'}`),
+            ),
+          ),
+        )
+      : null,
+  )
+
   const voices = ctx.voicesFor(targetCode)
   const voiceGroup = el('div', { class: 'group' }, el('div', { class: 'group-label' }, 'Reading aloud'))
   if (voiced) {
@@ -230,7 +272,7 @@ export function sheetMain(ctx: SheetContext, sampleSlot: (sample: HTMLElement) =
     { class: 'group' },
     el('p', { class: 'credit' }, 'Word meanings on hover: WikDict, from Wiktionary (CC BY-SA). Offline, no tokens.'),
   )
-  return el('div', { class: 'sheet-body' }, languages, level, model, voiceGroup, credit)
+  return el('div', { class: 'sheet-body' }, languages, level, model, spending, voiceGroup, credit)
 }
 
 /** The language list for one side of the pair; `renderList` redraws only the rows as the query changes. */

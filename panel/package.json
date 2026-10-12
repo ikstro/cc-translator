@@ -2,7 +2,7 @@
   "name": "language-tutor-panel",
   "displayName": "Language Tutor for Claude Code",
   "description": "Learn a language while you work with Claude Code: every message in the language you learn, tap a sentence for its translation, corrections of what you write, read-aloud with word highlighting, word meanings on Shift+hover.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "ikstro",
   "license": "MIT",
   "icon": "media/icon.png",

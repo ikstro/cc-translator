@@ -106,9 +106,9 @@ export function messageHtml(text: string, orientation?: Orientation): string {
     if (segment.code) return segment.en
     const { prefix, body } = splitPrefix(segment.en)
     if (body.trim().length === 0) return segment.en
-    const sentence = `<span class="s" tabindex="0">${escapeHtml(body)}</span>`
+    const sentence = `<span class="s" tabindex="0" dir="auto">${escapeHtml(body)}</span>`
     if (segment.ru === undefined || segment.ru.length === 0) return prefix + sentence
-    const tr = `<span class="tr"><span class="tr-text">${escapeHtml(segment.ru)}</span>${PLAY_BUTTON}</span>`
+    const tr = `<span class="tr"><span class="tr-text" dir="auto">${escapeHtml(segment.ru)}</span>${PLAY_BUTTON}</span>`
     return prefix + sentence + tr
   })
   return marked.parse(lines.join('\n'), { gfm: true, breaks: false, async: false }) as string

@@ -69,7 +69,13 @@ describe('hooks', () => {
     expect(text).toContain('Tutor: on')
     // The engine hands the hook the path in the platform's own spelling.
     const written = [...files.keys()].map(k => k.replace(/\\/g, '/'))
-    expect(written).toEqual(['C:/tmp/tutor-test/.claude/language-tutor/settings.json'])
+    expect(written).toEqual([
+      'C:/tmp/tutor-test/.claude/language-tutor/settings.json',
+      'C:/tmp/tutor-test/.claude/language-tutor/learner.json',
+    ])
+    // Turned on from a session: its project is the one that learns.
+    const learner = JSON.parse([...files.entries()].find(([k]) => k.endsWith('learner.json'))?.[1] ?? '{}') as { folders?: string[] }
+    expect(learner.folders).toEqual(['C:/tmp/project'])
     const { text: status } = await $.command.run(typed('status'))
     expect(status).toContain('Tutor: on')
   })

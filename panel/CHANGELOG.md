@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0
+
+- One window learns at a time: turning the tutor on in a window moves learning there; other windows show "Learning is on in … · Learn here" and translate only on a Translate tap.
+- Tutor tokens in the settings: today, 7 days, 30 days, and per project.
+- Arabic, Hebrew and Persian sentences and translations read right to left.
+
 ## 0.7.0
 
 - Any language you learn: labels, hints and the word card name the language in your settings instead of always saying English.
