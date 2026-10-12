@@ -1,6 +1,6 @@
 {
   "name": "language-tutor",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Learn a language while you work: a small tutor model turns the conversation into the language you learn, with translations and corrections, for the Tutor panel in VS Code. Claude's own answers are never changed.",
   "author": { "name": "ikstro" },
   "homepage": "https://github.com/ikstro/cc-translator#readme",

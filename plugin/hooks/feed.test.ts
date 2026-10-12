@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { addUsage, dayOf, isHumanPrompt, isPlanPath, panelCoverage, parseLedger, parseRequests, parseTextRequests, parseTutorReply, sessionPathFor, stripMachineBlocks } from './feed'
-import { mostlyCopies, mostlyInScript, scriptForLanguage, scriptOf, sideOf, userRoute } from './script'
+import { isThirdLanguage, mostlyCopies, mostlyInScript, scriptForLanguage, scriptOf, sideOf, userRoute } from './script'
 
 describe('panel coverage', () => {
   const now = 1_000_000
@@ -132,6 +132,29 @@ describe('language pairs', () => {
       }
     })
   }
+})
+
+describe('third language', () => {
+  const english = 'I checked the config. There are two problems with this file, and you should fix them.'
+  test('English is a third language when neither side is English', async () => {
+    expect(isThirdLanguage(english, 'Polish', 'Russian')).toBe(true)
+    expect(isThirdLanguage(english, 'German', 'Spanish')).toBe(true)
+    expect(isThirdLanguage(english, 'Japanese', 'Russian')).toBe(true)
+    expect(isThirdLanguage(english, 'English', 'Russian')).toBe(false)
+    expect(isThirdLanguage(english, 'German', 'English')).toBe(false)
+  })
+
+  test('a text in one of the pair is not', async () => {
+    expect(isThirdLanguage('Sprawdziłem konfigurację. Są dwa problemy z tym plikiem i trzeba je naprawić.', 'Polish', 'Russian')).toBe(false)
+    expect(isThirdLanguage('Я проверил конфиг. Есть две проблемы.', 'Polish', 'Russian')).toBe(false)
+    expect(isThirdLanguage('Ich habe die Datei geprüft. Was ist das Problem? Es will nicht starten.', 'German', 'Spanish')).toBe(false)
+    expect(isThirdLanguage('Jeg har tjekket filen, og den skal have en rettelse for porten.', 'Danish', 'Russian')).toBe(false)
+    expect(isThirdLanguage('Ik heb het bestand bekeken, het is niet goed.', 'Dutch', 'Russian')).toBe(false)
+  })
+
+  test('a Cyrillic reply is a third language for a Polish speaker learning German', async () => {
+    expect(isThirdLanguage('Я проверил конфиг. Есть две проблемы.', 'German', 'Polish')).toBe(true)
+  })
 })
 
 describe('direction', () => {

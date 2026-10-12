@@ -112,6 +112,28 @@ export function parseTranslateReply(reply: string, count: number): { lang: 'targ
  * language goes on the left and the original on the right, so the left side
  * is always the language being learned.
  */
+/**
+ * A text in a third language (neither learned nor native): the tutor gave
+ * each sentence as `learned ||| native`, which replaces the sentence. A
+ * missing line keeps the original sentence, untranslated.
+ */
+export function assembleBoth(units: Unit[], pairs: readonly (string | undefined)[]): string {
+  let i = 0
+  const lines = units.map(u => {
+    if (u.kind === 'raw') return u.text
+    const [target = '', native = ''] = (pairs[i++] ?? '').split(/\s*\|\|\|\s*/).map(side => side.trim())
+    if (!target) return `${u.prefix}${u.body}`
+    return native ? `${u.prefix}${target}${MARK}${native}` : `${u.prefix}${target}`
+  })
+  return lines.join('\n')
+}
+
+/** The two sides of `learned ||| native` lines, for checking each language. */
+export function sidesOf(pairs: readonly (string | undefined)[]): { targets: (string | undefined)[]; natives: (string | undefined)[] } {
+  const split = pairs.map(p => (p ?? '').split(/\s*\|\|\|\s*/))
+  return { targets: split.map(s => s[0] || undefined), natives: split.map(s => s[1] || undefined) }
+}
+
 export function assemblePaired(units: Unit[], translations: readonly (string | undefined)[], flip = false): string {
   let i = 0
   const lines = units.map(u => {

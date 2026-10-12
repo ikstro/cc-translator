@@ -87,6 +87,37 @@ export function userRoute(text: string, target: string, native: string): 'to-tar
   return sideOf(text, target, native) === 'native' ? 'to-target' : 'tutor-decides'
 }
 
+// Words that mark English prose and are not everyday words in the other
+// Latin-script languages on the list ("was" and "will" are German, "is" and
+// "to" Dutch or Polish, "for" and "have" Danish, so they are left out).
+const ENGLISH_MARKERS = new Set([
+  'the', 'and', 'of', 'you', 'your', 'this', 'that', 'with', 'there', 'should', 'would', 'which', 'what',
+  'are', 'has', 'from', 'not', 'can', "it's", "don't", "i'm", 'it', 'they', 'these', 'need',
+])
+
+/** Whether a Latin-script text reads as English: enough of its words are English function words. */
+export function looksEnglish(text: string): boolean {
+  const prose = text.replace(/```[\s\S]*?```/g, ' ').replace(/`[^`]*`/g, ' ').replace(/https?:\/\/\S+/g, ' ')
+  const words = prose.toLowerCase().match(/[a-z']+/g) ?? []
+  if (words.length < 4 || scriptOf(prose) !== 'Latin') return false
+  return words.filter(w => ENGLISH_MARKERS.has(w)).length / words.length >= 0.12
+}
+
+/**
+ * Whether a text is in neither language of the pair, so it needs both
+ * sides: written in a third script (English for a Russian speaker learning
+ * Japanese), or English when neither side is English (a Russian speaker
+ * learning Polish, and Claude answered in English).
+ */
+export function isThirdLanguage(text: string, target: string, native: string): boolean {
+  const s = scriptOf(text)
+  const t = scriptForLanguage(target)
+  const n = scriptForLanguage(native)
+  if (s && t && n && s !== t && s !== n) return true
+  const english = (name: string) => name.trim().toLowerCase() === 'english'
+  return !english(target) && !english(native) && looksEnglish(text)
+}
+
 /** True when most translations merely repeat their source sentence. */
 export function mostlyCopies(translations: readonly (string | undefined)[], sources: readonly string[]): boolean {
   const norm = (v: string) => v.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')

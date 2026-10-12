@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { assemblePaired, batches, parseNumbered, parseTranslateReply, sentencesOf, splitUnits } from './sentences'
+import { assembleBoth, assemblePaired, batches, sidesOf, parseNumbered, parseTranslateReply, sentencesOf, splitUnits } from './sentences'
 
 describe('sentences', () => {
   test('splits paragraph lines into sentences, keeps list items whole', async () => {
@@ -53,5 +53,12 @@ describe('sentences', () => {
     expect(batches(s, 8)).toEqual([['aaaa', 'bbbb'], ['cc'], ['ddddddddddddd'], ['e']])
     expect(batches(s, 100)).toEqual([s])
     expect(batches([], 100)).toEqual([])
+  })
+
+  test('a third-language text is replaced by both sides; a missing line keeps the original', async () => {
+    const units = splitUnits('I checked it.\n\n- the port is a string;\n\n```ts\nx\n```\nShould I fix it?')
+    const text = assembleBoth(units, ['Sprawdziłem to. ||| Я это проверил.', 'port jest tekstem; ||| порт задан строкой;', undefined])
+    expect(text).toBe('Sprawdziłem to. ||| Я это проверил.\n\n- port jest tekstem; ||| порт задан строкой;\n\n```ts\nx\n```\nShould I fix it?')
+    expect(sidesOf(['a ||| b', 'c', undefined])).toEqual({ targets: ['a', 'c', undefined], natives: ['b', undefined, undefined] })
   })
 })

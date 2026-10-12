@@ -23,10 +23,11 @@ import {
   type Ledger,
   type PanelBeat,
 } from './feed'
-import { mostlyCopies, mostlyInScript, scriptForLanguage, sideOf, userRoute } from './script'
-import { assemblePaired, batches, parseNumbered, parseTranslateReply, sentencesOf, splitUnits } from './sentences'
+import { isThirdLanguage, mostlyCopies, mostlyInScript, scriptForLanguage, scriptOf, sideOf, userRoute } from './script'
+import { assembleBoth, assemblePaired, batches, parseNumbered, parseTranslateReply, sentencesOf, sidesOf, splitUnits } from './sentences'
 import { applyCommand, normalize, type Settings } from './settings'
 import {
+  BOTH_SYSTEM,
   RETRY_NOTE,
   TO_NATIVE_SYSTEM,
   TO_TARGET_SYSTEM,
@@ -306,8 +307,10 @@ async function translateLines(
   into: string,
   sentences: readonly string[],
   isWrong: (lines: Lines) => boolean,
+  /** Output tokens allowed per character of source: 2 for one translation, 4 when both sides are written. */
+  perChar = 2,
 ): Promise<Lines | 'wrong' | undefined> {
-  const maxTokens = Math.min(16_000, 500 + 2 * sentences.join(' ').length)
+  const maxTokens = Math.min(16_000, 500 + perChar * sentences.join(' ').length)
   for (let attempt = 0; attempt < 2; attempt++) {
     const reply = await complete($, s, job, attempt === 0 ? system : system + RETRY_NOTE(into), numbered(sentences), maxTokens)
     if (reply === undefined) return undefined
@@ -370,6 +373,29 @@ async function runJob($: EngineInterface, job: Job): Promise<void> {
     const limited = sentences.filter(sentence => (budget -= sentence.length) >= 0)
     const note = limited.length < sentences.length ? 'long text: only the first part is translated' : undefined
     const groups = batches(limited, BATCH_CHARS)
+    if (isThirdLanguage(limited.join(' '), s.target, s.native)) {
+      // Neither side of the pair (English while learning Polish from Russian): the tutor writes both.
+      const source = scriptOf(limited.join(' '))
+      const sidesWrong = (lines: Lines, sentences: readonly string[]) => {
+        const { targets, natives } = sidesOf(lines)
+        const leftInSource = (side: Lines, language: string) =>
+          !!source && scriptForLanguage(language) !== source && mostlyInScript(side, source)
+        return (
+          mostlyCopies(targets, sentences) ||
+          mostlyCopies(natives, sentences) ||
+          leftInSource(targets, s.target) ||
+          leftInSource(natives, s.native)
+        )
+      }
+      const pairs: Lines = []
+      for (const group of groups) {
+        const got = await translateLines($, s, job, BOTH_SYSTEM(s), `${s.target} and ${s.native}`, group, l => sidesWrong(l, group), 4)
+        if (got === undefined) return void (await fail('the tutor did not answer'))
+        if (got === 'wrong') return void (await fail(`the tutor did not translate into ${s.target} and ${s.native}`))
+        pairs.push(...got)
+      }
+      return void (await done({ role: 'paired', text: assembleBoth(units, pairs), ...(note ? { note } : {}) }))
+    }
     const side = sideOf(limited.join(' '), s.target, s.native)
     if (side) {
       // Known direction: English replies go into the person's language, theirs into English.

@@ -5,6 +5,7 @@
 - One window learns at a time: turning the tutor on in a window moves learning there; other windows show "Learning is on in … · Learn here" and translate only on a Translate tap.
 - Tutor tokens in the settings: today, 7 days, 30 days, and per project.
 - Arabic, Hebrew and Persian sentences and translations read right to left.
+- Replies in a third language (Claude answered in English while you learn Polish from Russian) now show the learned language with your language on tap; this needs plugin 0.7.1.
 
 ## 0.7.0
 
