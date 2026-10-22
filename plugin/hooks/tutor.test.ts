@@ -80,6 +80,41 @@ describe('hooks', () => {
     expect(status).toContain('Tutor: on')
   })
 
+  test('the status line follows the switch in the panel without a new session', async ($, on) => {
+    const clock = mock.clock(on)
+    mock.store(on)
+    mock.env(on, { USERPROFILE: 'C:/tmp/tutor-test' })
+    on('session.id', () => ({ value: 'status-session' }))
+    on('session.cwd', () => ({ value: 'C:/tmp/project' }))
+    on('command.register', ($, e) => ({ value: { command: e.name } }))
+    on('session.start', ($, e) => ({ cwd: e.cwd }))
+    const shown: (string | undefined)[] = []
+    on('ui.status', ($, e) => {
+      shown.push(e.text)
+      return { value: undefined }
+    })
+    const slash = (p: string) => p.replace(/\\/g, '/')
+    const settings = 'C:/tmp/tutor-test/.claude/language-tutor/settings.json'
+    const files = new Map<string, string>([[settings, JSON.stringify({ enabled: true, level: 'B1', target: 'English' })]])
+    on('fs.write', ($, e) => {
+      files.set(slash(e.path), e.text)
+      return { value: undefined }
+    })
+    on('fs.read', ($, e, next) => {
+      const text = files.get(slash(e.path))
+      return text === undefined ? next(e) : { value: text }
+    })
+    await $.session.start({ cwd: 'C:/tmp/project', surface: null, isInteractive: true })
+    expect(shown[shown.length - 1]).toBe('tutor: English B1')
+    // The panel writes settings.json; the session keeps running.
+    files.set(settings, JSON.stringify({ enabled: false, level: 'B1', target: 'English' }))
+    await clock.advance(4_000)
+    expect(shown[shown.length - 1]).toBeUndefined()
+    files.set(settings, JSON.stringify({ enabled: true, level: 'B1', target: 'English' }))
+    await clock.advance(4_000)
+    expect(shown[shown.length - 1]).toBe('tutor: English B1')
+  })
+
   test('the plan Claude presents is copied for the panel, even while no panel is open', async ($, on) => {
     mock.store(on)
     mock.env(on, { USERPROFILE: 'C:/tmp/tutor-test' })

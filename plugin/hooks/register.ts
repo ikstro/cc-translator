@@ -63,6 +63,8 @@ let seq = 0
 const ledgers = new Map<string, Ledger>()
 /** The plan file the model last wrote in this process: read when it presents the plan. */
 let lastPlanPath: string | undefined
+/** What the status line shows, so the worker redraws it only when the settings say otherwise. */
+let shownStatus: string | undefined
 
 function nextId(): string {
   seq += 1
@@ -93,6 +95,13 @@ async function writeSettings($: EngineInterface, s: Settings): Promise<void> {
 
 function statusText(s: Settings): string | undefined {
   return s.enabled ? `tutor: ${s.target}${s.level === 'off' ? '' : ' ' + s.level}` : undefined
+}
+
+/** Sets the status line; `always` for a new session, whose line starts empty whatever this module last showed. */
+function showStatus($: EngineInterface, text: string | undefined, always = false): void {
+  if (!always && text === shownStatus) return
+  shownStatus = text
+  $.ui.status(text)
 }
 
 function textOf(content: readonly { type: string; text?: string }[]): string {
@@ -193,8 +202,18 @@ function enqueue(job: Job): void {
 
 async function tick($: EngineInterface): Promise<void> {
   ticks += 1
-  if (ticks % REQUEST_SCAN_TICKS === 0) await scanRequests($)
+  if (ticks % REQUEST_SCAN_TICKS === 0) {
+    await scanRequests($)
+    await followSettings($)
+  }
   await drain($)
+}
+
+/** The panel switches the tutor on and off by writing settings.json: the status line follows it. */
+async function followSettings($: EngineInterface): Promise<void> {
+  const text = statusText(await readSettings($))
+  // A job under way shows "translating…" and sets the line itself when it ends.
+  if (!working) showStatus($, text)
 }
 
 /** Picks up what the panel wrote for this session: Translate taps, and texts the person picked in an editor. */
@@ -332,7 +351,7 @@ async function runJob($: EngineInterface, job: Job): Promise<void> {
     return !!script && !!other && script !== other && mostlyInScript(lines, other)
   }
   await record($, { ...base, id: nextId(), role: 'status', state: 'translating' })
-  $.ui.status('tutor: translating…')
+  showStatus($, 'tutor: translating…')
   try {
     if (job.kind === 'user') {
       const long = job.text.length > MAX_USER_CHARS
@@ -423,7 +442,7 @@ async function runJob($: EngineInterface, job: Job): Promise<void> {
     }
     await done({ role: 'paired', text: assemblePaired(units, translations, lang === 'native'), ...(note ? { note } : {}) })
   } finally {
-    $.ui.status(statusText(s))
+    showStatus($, statusText(s))
   }
 }
 
@@ -458,7 +477,7 @@ export const register: Register = on => {
       argumentHint: 'on | off | level B1 | lang English | native Russian | model haiku | read on | status',
     })
     const s = await readSettings($)
-    $.ui.status(statusText(s))
+    showStatus($, statusText(s), true)
     $.clock.every(TICK_MS, () => {
       void tick($)
     })
@@ -471,7 +490,7 @@ export const register: Register = on => {
     if (change.changed) await writeSettings($, change.settings)
     // Turned on from a session: its project is the one that learns, in whichever window shows it.
     if (/^\s*on\b/i.test(e.args)) await claimLearner($, await sessionCwd($, await $.session.id()))
-    $.ui.status(statusText(change.settings))
+    showStatus($, statusText(change.settings), true)
     return { text: change.note }
   })
 
