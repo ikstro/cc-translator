@@ -74,7 +74,7 @@ A translated message is stored line by line as `English sentence ||| translation
 
 ### Preview harness
 
-`design-lab/2026-10-08-tutor-panel/harness.html` loads the built `media/panel.js` with VS Code theme variables and a stub host. `node make-fixture.mjs` regenerates `fixture.js` with the real renderer; bundle `src/lemma.ts` to `lemma.js` (esbuild, `--format=iife --global-name=Lemma`) for hover lookups. Serve the repo over http (Playwright MCP blocks `file://`) and open `#light` for the light theme.
+`design-lab/2026-10-08-tutor-panel/harness.html` loads the built `media/panel.js` with VS Code theme variables and a stub host. `node make-fixture.mjs` regenerates `fixture.js` with the real renderer; `node make-readme-fixture.mjs` writes `fixture-readme.js`, the session in the README screenshots (`docs/images/`; open `?fixture=readme`, add `&mode=document` for the plan tab, `&learning=elsewhere` for a window that does not learn); bundle `src/lemma.ts` to `lemma.js` (esbuild, `--format=iife --global-name=Lemma`) for hover lookups. Serve the repo over http (Playwright MCP blocks `file://`) and open `#light` for the light theme.
 
 ## Product rules (owner decisions)
 

@@ -3,3 +3,4 @@ panel/dist/
 panel/media/panel.js
 *.vsix
 plugin/.claude-plugin/types/
+.playwright-mcp/

@@ -85,6 +85,11 @@
   // plays the host voice route by sending word positions on a timer.
   if (location.hash.includes('light')) document.documentElement.classList.add('light')
   const fixture = window.FIXTURE
+  // ?mode=document shows the first plan (or exchange) as a document tab; ?learning=elsewhere
+  // shows a window whose project does not learn.
+  const params = new URLSearchParams(location.search)
+  if (params.get('mode') === 'document') document.body.dataset.mode = 'document'
+  if (params.get('learning') === 'elsewhere') fixture.learning = { where: 'elsewhere', project: 'E:/Work/Wind to ride' }
   const send = data => window.postMessage(data, '*')
   let timers = []
   window.HARNESS = { posted: [], freezeAtWord: Number(new URLSearchParams(location.search).get('freeze') ?? -1) }
@@ -126,7 +131,10 @@
         })
       }
       if (message.type === 'ready') {
-        session()
+        if (document.body.dataset.mode === 'document') {
+          const exchange = fixture.exchanges.find(x => x.kind === 'plan') ?? fixture.exchanges[0]
+          send({ type: 'document', exchange, settings: fixture.settings, config: { voice: '', rate: 1, wordHint: 'shift' } })
+        } else session()
         send({ type: 'hostVoices', canSpeak: true, platform: 'win32', voices: [
           { name: 'Microsoft David Desktop', lang: 'en-US' },
           { name: 'Microsoft Zira Desktop', lang: 'en-US' },
