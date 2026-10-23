@@ -231,3 +231,7 @@ Word dictionaries: [WikDict](https://www.wikdict.com) by Karl Bartel, data from 
 ## License
 
 Code: [MIT](LICENSE). Dictionary data: CC BY-SA 4.0.
+
+## Author
+
+Made by [Yevhen Peshynskyi (ikstro)](https://ikstro.com), design automation engineer in Odesa. More tools and the work behind them: [ikstro.com](https://ikstro.com).
