@@ -7,9 +7,11 @@ import {
   isHumanPrompt,
   isPlanPath,
   learnerPathFor,
+  learnsAt,
   panelCoverage,
   panelsDirFor,
   parseEntries,
+  parseLearnerFolders,
   parseLedger,
   parseRequests,
   parseTextRequests,
@@ -97,6 +99,13 @@ function statusText(s: Settings): string | undefined {
   return s.enabled ? `tutor: ${s.target}${s.level === 'off' ? '' : ' ' + s.level}` : undefined
 }
 
+/** The status line for this session: shown only in the window that learns, like the panel's switch. */
+async function statusFor($: EngineInterface, s: Settings): Promise<string | undefined> {
+  if (!s.enabled) return undefined
+  const cwd = await sessionCwd($, await $.session.id())
+  return learnsAt(await readBeats($), await readLearnerFolders($), cwd, Date.now()) ? statusText(s) : undefined
+}
+
 /** Sets the status line; `always` for a new session, whose line starts empty whatever this module last showed. */
 function showStatus($: EngineInterface, text: string | undefined, always = false): void {
   if (!always && text === shownStatus) return
@@ -111,15 +120,15 @@ function textOf(content: readonly { type: string; text?: string }[]): string {
     .join('\n')
 }
 
-/** Whether a Tutor panel is open for `cwd`, and whether it is on screen. */
-async function panelState($: EngineInterface, cwd: string): Promise<{ open: boolean; visible: boolean }> {
+/** The heartbeats of every open Tutor panel. */
+async function readBeats($: EngineInterface): Promise<PanelBeat[]> {
   const dir = panelsDirFor(await homeOf($))
-  if (!dir) return { open: false, visible: false }
+  if (!dir) return []
   let names: string[] = []
   try {
     names = (await $.fs.list(dir)).filter(f => f.kind === 'file' && f.name.endsWith('.json')).map(f => f.name)
   } catch {
-    return { open: false, visible: false }
+    return []
   }
   const beats: PanelBeat[] = []
   for (const name of names) {
@@ -129,7 +138,23 @@ async function panelState($: EngineInterface, cwd: string): Promise<{ open: bool
       // a beat being rewritten: the next one counts
     }
   }
-  return panelCoverage(beats, cwd, Date.now())
+  return beats
+}
+
+/** Whether a Tutor panel is open for `cwd`, and whether it is on screen. */
+async function panelState($: EngineInterface, cwd: string): Promise<{ open: boolean; visible: boolean }> {
+  return panelCoverage(await readBeats($), cwd, Date.now())
+}
+
+/** The folders of the project that learns, from `learner.json`. */
+async function readLearnerFolders($: EngineInterface): Promise<string[]> {
+  const path = learnerPathFor(await homeOf($))
+  if (!path) return []
+  try {
+    return parseLearnerFolders((await $.fs.read(path)) as string)
+  } catch {
+    return []
+  }
 }
 
 async function readSession($: EngineInterface, sessionId: string): Promise<FeedEntry[]> {
@@ -209,9 +234,9 @@ async function tick($: EngineInterface): Promise<void> {
   await drain($)
 }
 
-/** The panel switches the tutor on and off by writing settings.json: the status line follows it. */
+/** The panel switches the tutor on and off, and moves learning between windows: the status line follows both. */
 async function followSettings($: EngineInterface): Promise<void> {
-  const text = statusText(await readSettings($))
+  const text = await statusFor($, await readSettings($))
   // A job under way shows "translating…" and sets the line itself when it ends.
   if (!working) showStatus($, text)
 }
@@ -442,7 +467,7 @@ async function runJob($: EngineInterface, job: Job): Promise<void> {
     }
     await done({ role: 'paired', text: assemblePaired(units, translations, lang === 'native'), ...(note ? { note } : {}) })
   } finally {
-    showStatus($, statusText(s))
+    showStatus($, await statusFor($, s))
   }
 }
 
@@ -477,7 +502,7 @@ export const register: Register = on => {
       argumentHint: 'on | off | level B1 | lang English | native Russian | model haiku | read on | status',
     })
     const s = await readSettings($)
-    showStatus($, statusText(s), true)
+    showStatus($, await statusFor($, s), true)
     $.clock.every(TICK_MS, () => {
       void tick($)
     })
@@ -489,8 +514,10 @@ export const register: Register = on => {
     if (!change.ok) return { text: change.error }
     if (change.changed) await writeSettings($, change.settings)
     // Turned on from a session: its project is the one that learns, in whichever window shows it.
-    if (/^\s*on\b/i.test(e.args)) await claimLearner($, await sessionCwd($, await $.session.id()))
-    showStatus($, statusText(change.settings), true)
+    const claimed = /^\s*on\b/i.test(e.args)
+    if (claimed) await claimLearner($, await sessionCwd($, await $.session.id()))
+    // Just claimed: this session learns, though its panel's beat may not say so yet.
+    showStatus($, claimed ? statusText(change.settings) : await statusFor($, change.settings), true)
     return { text: change.note }
   })
 

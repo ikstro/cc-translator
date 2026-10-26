@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { addUsage, dayOf, isHumanPrompt, isPlanPath, panelCoverage, parseLedger, parseRequests, parseTextRequests, parseTutorReply, sessionPathFor, stripMachineBlocks } from './feed'
+import { addUsage, dayOf, isHumanPrompt, isPlanPath, learnsAt, panelCoverage, parseLearnerFolders, parseLedger, parseRequests, parseTextRequests, parseTutorReply, sessionPathFor, stripMachineBlocks } from './feed'
 import { isThirdLanguage, mostlyCopies, mostlyInScript, scriptForLanguage, scriptOf, sideOf, userRoute } from './script'
 
 describe('panel coverage', () => {
@@ -23,6 +23,29 @@ describe('panel coverage', () => {
     expect(panelCoverage([{ ...shown, learning: true }], 'C:/p', now)).toEqual({ open: true, visible: true })
     // A panel from before learning windows existed.
     expect(panelCoverage([shown], 'C:/p', now)).toEqual({ open: true, visible: true })
+  })
+})
+
+describe('the window that learns', () => {
+  const now = 1_000_000
+  test('an open panel decides, hidden or not; one from before learning windows counts as learning', async () => {
+    const beat = { folders: ['C:/p'], visible: false, ts: now }
+    expect(learnsAt([{ ...beat, learning: true }], ['C:/other'], 'C:/p', now)).toBe(true)
+    expect(learnsAt([{ ...beat, learning: false }], [], 'C:/p', now)).toBe(false)
+    expect(learnsAt([beat], ['C:/other'], 'C:/p', now)).toBe(true)
+  })
+
+  test('with no fresh panel, learner.json decides; no learner means learning here', async () => {
+    const stale = { folders: ['C:/p'], learning: false, ts: now - 120_000 }
+    expect(learnsAt([stale], [], 'C:/p', now)).toBe(true)
+    expect(learnsAt([], ['C:\\Work\\Shop'], 'c:/work/shop/panel', now)).toBe(true)
+    expect(learnsAt([], ['C:/Work/Shop/panel'], 'C:/Work/Shop', now)).toBe(true)
+    expect(learnsAt([], ['C:/Work/Shop'], 'C:/Work/Other', now)).toBe(false)
+  })
+
+  test('learner.json is read leniently', async () => {
+    expect(parseLearnerFolders('{"folders":["C:/p",3,""],"ts":1}')).toEqual(['C:/p'])
+    expect(parseLearnerFolders('not json')).toEqual([])
   })
 })
 

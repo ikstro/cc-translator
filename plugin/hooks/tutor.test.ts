@@ -115,6 +115,42 @@ describe('hooks', () => {
     expect(shown[shown.length - 1]).toBe('tutor: English B1')
   })
 
+  test('the status line shows only in the window that learns', async ($, on) => {
+    const clock = mock.clock(on)
+    mock.store(on)
+    mock.env(on, { USERPROFILE: 'C:/tmp/tutor-test' })
+    on('session.id', () => ({ value: 'learner-session' }))
+    on('session.cwd', () => ({ value: 'C:/tmp/project' }))
+    on('command.register', ($, e) => ({ value: { command: e.name } }))
+    on('session.start', ($, e) => ({ cwd: e.cwd }))
+    on('fs.list', () => ({ value: [] }))
+    const shown: (string | undefined)[] = []
+    on('ui.status', ($, e) => {
+      shown.push(e.text)
+      return { value: undefined }
+    })
+    const slash = (p: string) => p.replace(/\\/g, '/')
+    const dir = 'C:/tmp/tutor-test/.claude/language-tutor'
+    const files = new Map<string, string>([
+      [`${dir}/settings.json`, JSON.stringify({ enabled: true, level: 'B1', target: 'English' })],
+      [`${dir}/learner.json`, JSON.stringify({ folders: ['C:/tmp/other'], ts: 1 })],
+    ])
+    on('fs.write', ($, e) => {
+      files.set(slash(e.path), e.text)
+      return { value: undefined }
+    })
+    on('fs.read', ($, e, next) => {
+      const text = files.get(slash(e.path))
+      return text === undefined ? next(e) : { value: text }
+    })
+    await $.session.start({ cwd: 'C:/tmp/project', surface: null, isInteractive: true })
+    expect(shown[shown.length - 1]).toBeUndefined()
+    // "Learn here" in this window's panel moves learning to this project.
+    files.set(`${dir}/learner.json`, JSON.stringify({ folders: ['C:/tmp/project'], ts: 2 }))
+    await clock.advance(4_000)
+    expect(shown[shown.length - 1]).toBe('tutor: English B1')
+  })
+
   test('the plan Claude presents is copied for the panel, even while no panel is open', async ($, on) => {
     mock.store(on)
     mock.env(on, { USERPROFILE: 'C:/tmp/tutor-test' })

@@ -163,23 +163,47 @@ export function isPlanPath(path: unknown, home: string | undefined): boolean {
   return p.startsWith(d + '/') && p.endsWith('.md') && !p.slice(d.length + 1).includes('/')
 }
 
-/** Whether an open Tutor panel covers `cwd`, and whether it is on screen. Beats older than 90 s are ignored. */
-export function panelCoverage(beats: readonly PanelBeat[], cwd: string, now: number): { open: boolean; visible: boolean } {
+/** The fresh beats of panels whose window has `cwd` among its folders. Beats older than 90 s are ignored. */
+function coveringBeats(beats: readonly PanelBeat[], cwd: string, now: number): PanelBeat[] {
   const target = normalizePath(cwd)
-  let open = false
-  let visible = false
-  for (const beat of beats) {
-    if (typeof beat.ts !== 'number' || now - beat.ts > STALE_MS) continue
+  return beats.filter(beat => {
+    if (typeof beat.ts !== 'number' || now - beat.ts > STALE_MS) return false
     const folders = Array.isArray(beat.folders) ? beat.folders.filter((f): f is string => typeof f === 'string') : []
-    const covers = folders.some(f => {
+    return folders.some(f => {
       const root = normalizePath(f)
       return target === root || target.startsWith(root + '/')
     })
-    if (!covers) continue
-    open = true
-    if (beat.visible === true && beat.learning !== false) visible = true
+  })
+}
+
+/** Whether an open Tutor panel covers `cwd`, and whether it is on screen. */
+export function panelCoverage(beats: readonly PanelBeat[], cwd: string, now: number): { open: boolean; visible: boolean } {
+  const covering = coveringBeats(beats, cwd, now)
+  return { open: covering.length > 0, visible: covering.some(beat => beat.visible === true && beat.learning !== false) }
+}
+
+/** The folders `learner.json` names; empty when there is no file or it is malformed. */
+export function parseLearnerFolders(text: string): string[] {
+  try {
+    const raw = JSON.parse(text) as { folders?: unknown }
+    return Array.isArray(raw.folders) ? raw.folders.filter((f): f is string => typeof f === 'string' && f.length > 0) : []
+  } catch {
+    return []
   }
-  return { open, visible }
+}
+
+/**
+ * Whether the session in `cwd` belongs to the window that learns, as its
+ * panel's switch shows it. The panel's beat says so when one is open; with
+ * none (closed, or Claude Code outside VS Code) `learner.json` decides, and
+ * no learner at all means nothing has moved learning away.
+ */
+export function learnsAt(beats: readonly PanelBeat[], learnerFolders: readonly string[], cwd: string, now: number): boolean {
+  const covering = coveringBeats(beats, cwd, now)
+  if (covering.length > 0) return covering.some(beat => beat.learning !== false)
+  if (learnerFolders.length === 0) return true
+  const target = normalizePath(cwd)
+  return learnerFolders.map(normalizePath).some(l => target === l || target.startsWith(l + '/') || l.startsWith(target + '/'))
 }
 
 // ------------------------------------------------------------ prompts
