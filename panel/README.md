@@ -22,7 +22,7 @@ The panel shows what the **language-tutor** plugin writes. Install it in Claude 
 ## Using it
 
 - **Tap a sentence** to show its translation under it; tap again to hide it. The button with your language code in the header shows every translation at once.
-- **▶ next to a translation** reads that sentence; **Listen** reads the whole reply. While reading, the button becomes **Stop** and the current word is highlighted. Esc also stops.
+- **▶ next to a translation** reads that sentence; **Listen** reads the whole reply. While reading, the button becomes **Stop** and the current word is highlighted. Esc also stops. For English the panel offers a natural voice that sounds like a person (one download of about 170 MB, then offline on your computer); other languages use your system's voices.
 - **Your messages** show in the language you learn first (tap for what you wrote), or corrected when you wrote in it already.
 - **Hold Shift and point at a word** for its meanings (when you learn English).
 - **Plans** Claude presents in plan mode open in their own tab beside the chat; any text in an editor can be sent there with **Tutor: Translate the selection** (right-click).

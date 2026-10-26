@@ -145,6 +145,26 @@
         fixture.settings = { ...fixture.settings, ...message.patch }
         session()
       }
+      // ?natural=absent|ready: the natural voice's offer and download; its "audio" is a soft tone, 0.3 s a word.
+      const natural = window.HARNESS.natural ??= { status: params.get('natural') ?? 'unsupported', progress: 0, size: 170, dismissed: false }
+      if (message.type === 'ready') send({ type: 'natural', state: natural })
+      if (message.type === 'dismissNatural') { natural.dismissed = true; send({ type: 'natural', state: natural }) }
+      if (message.type === 'downloadNatural') {
+        natural.status = 'downloading'
+        for (let i = 0; i <= 10; i++) setTimeout(() => {
+          Object.assign(natural, i < 10 ? { progress: i / 10 } : { status: 'ready', progress: 1 })
+          send({ type: 'natural', state: { ...natural } })
+        }, 150 * i)
+      }
+      if (message.type === 'speakNatural') {
+        timers.forEach(clearTimeout); timers = []
+        message.items.forEach((text, index) => {
+          const words = [...text.matchAll(/[\p{L}\p{N}]+(?:['’.\-][\p{L}\p{N}]+)*/gu)].map((m, i) => ({ start: m.index, length: m[0].length, at: 0.1 + i * 0.3, until: 0.1 + i * 0.3 + 0.28 }))
+          const samples = new Float32Array(Math.round(24000 * (0.2 + words.length * 0.3)))
+          for (let i = 0; i < samples.length; i++) samples[i] = 0.02 * Math.sin(i / 10)
+          timers.push(setTimeout(() => send({ type: 'naturalAudio', id: message.id, index, samples, words }), 300 + index * 200))
+        })
+      }
       if (message.type === 'stop') { timers.forEach(clearTimeout); timers = [] }
       if (message.type === 'speak') {
         timers.forEach(clearTimeout); timers = []

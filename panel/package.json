@@ -2,7 +2,7 @@
   "name": "language-tutor-panel",
   "displayName": "Language Tutor for Claude Code",
   "description": "Learn a language while you work with Claude Code: every message in the language you learn, tap a sentence for its translation, corrections of what you write, read-aloud with word highlighting, word meanings on Shift+hover.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "ikstro",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -106,7 +106,7 @@
         "languageTutor.voice": {
           "type": "string",
           "default": "",
-          "description": "Name of the system voice used by the speaker button. Empty: the first voice that matches the language you learn."
+          "description": "The voice for reading aloud. Empty (Automatic): for English the natural voice once it is downloaded, otherwise the first system voice that matches the language you learn. \"natural:af_heart\", \"natural:bf_emma\" and the like name a natural voice; any other value names a system voice."
         },
         "languageTutor.rate": {
           "type": "number",
@@ -163,7 +163,8 @@
     "test": "vitest run",
     "package": "npm run build && vsce package --no-dependencies",
     "vscode:prepublish": "npm run build",
-    "dict": "node scripts/build-dict.mjs ru"
+    "dict": "node scripts/build-dict.mjs ru",
+    "voice": "node scripts/build-voice.mjs"
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.36",
@@ -174,6 +175,9 @@
     "@types/vscode": "^1.98.0",
     "@vscode/vsce": "^3.3.0",
     "esbuild": "^0.25.0",
+    "onnxruntime-common": "1.30.0",
+    "onnxruntime-node": "1.30.0",
+    "phonemizer": "1.2.1",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }

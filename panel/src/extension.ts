@@ -8,6 +8,7 @@ import { DictionaryStore } from './dictstore'
 import { defaultNative, langCode, scriptFor, scriptOf } from './languages'
 import { learnsHere, learningState, parseLearner, type Learner, type LearningState } from './learner'
 import { lookup } from './lemma'
+import { systemVoiceName, type NaturalState } from './natural'
 import type { EmptyReason, ExchangeKind, GlossMissing, HostVoice, ToHost, ToView, ViewBlock, ViewConfig, ViewExchange } from './protocol'
 import {
   messageHtml,
@@ -22,7 +23,10 @@ import {
 } from './render'
 import { groupExchanges, indexResults, kindLabel, stateOf, titleOf, type Results } from './session'
 import { Speaker, listHostVoices } from './speech'
+import { NaturalSpeaker } from './synth'
 import { EMPTY_SUMMARY, parseLedger, summarize, type Ledger, type UsageSummary } from './usage'
+import manifest from './voice-manifest.json'
+import { VoiceStore, type VoiceManifest } from './voicestore'
 
 // ~/.claude/language-tutor/
 //   settings.json               shared with the Claude Code plugin
@@ -61,6 +65,9 @@ const panelsDir = () => path.join(baseDir(), 'panels')
 const usageDir = () => path.join(baseDir(), 'usage')
 /** Token ledgers are kept for the 30-day total. */
 const USAGE_RETENTION_MS = 31 * 24 * 60 * 60 * 1000
+/** A download of the natural voice that receives nothing for this long is given up. */
+const STALL_MS = 60_000
+const NATURAL_DISMISSED = 'naturalOfferDismissed'
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new TutorViewProvider(context)
@@ -106,9 +113,23 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
     progress: (id, pos, len) => this.post(this.speakingTo, { type: 'progress', id, pos, len }),
     done: id => this.post(this.speakingTo, { type: 'speakDone', id }),
   })
+  private readonly voiceStore: VoiceStore
+  private readonly natural: NaturalSpeaker
   private readonly disposables: vscode.Disposable[] = []
 
   constructor(private readonly context: vscode.ExtensionContext) {
+    this.voiceStore = new VoiceStore({
+      manifest: manifest as VoiceManifest,
+      root: vscode.Uri.joinPath(context.globalStorageUri, 'voice').fsPath,
+      platform: process.platform,
+      arch: process.arch,
+      open: url => openStream(url),
+      onChange: () => this.postNatural(),
+    })
+    this.natural = new NaturalSpeaker(vscode.Uri.joinPath(context.extensionUri, 'dist', 'voice-worker.js').fsPath, () => this.voiceStore.paths, {
+      audio: (id, index, samples, words) => this.post(this.speakingTo, { type: 'naturalAudio', id, index, samples, words }),
+      failed: (id, message) => this.post(this.speakingTo, { type: 'naturalFailed', id, message }),
+    })
     this.dictionaries = new DictionaryStore({
       bundledDir: vscode.Uri.joinPath(context.extensionUri, 'media', 'dict').fsPath,
       cacheDir: vscode.Uri.joinPath(context.globalStorageUri, 'dict').fsPath,
@@ -153,7 +174,7 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
       }),
       view.onDidDispose(() => {
         this.view = undefined
-        if (this.speakingTo === view.webview) this.speaker.stop()
+        if (this.speakingTo === view.webview) this.stopAll()
         this.writeBeat()
       }),
     )
@@ -163,6 +184,7 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
 
   dispose(): void {
     this.speaker.stop()
+    this.natural.dispose()
     for (const panel of this.documents.values()) panel.dispose()
     this.removeBeat()
     for (const w of this.watchers) w.close()
@@ -171,7 +193,13 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
   }
 
   stopSpeaking(): void {
+    this.post(this.speakingTo, { type: 'stop' })
+    this.stopAll()
+  }
+
+  private stopAll(): void {
     this.speaker.stop()
+    this.natural.stop()
   }
 
   async confirmClear(): Promise<void> {
@@ -520,7 +548,7 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
     panel.onDidDispose(() => {
       if (this.documents.get(id) === panel) this.documents.delete(id)
       this.pendingDocuments.delete(id)
-      if (this.speakingTo === panel.webview) this.speaker.stop()
+      if (this.speakingTo === panel.webview) this.stopAll()
       this.writeBeat()
     })
     this.documents.set(id, panel)
@@ -543,15 +571,31 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
       case 'ready':
         this.push()
         void this.sendHostVoices(from)
+        this.post(from, { type: 'natural', state: this.naturalState() })
         return
       case 'speak': {
         const { voice, rate } = this.config()
+        this.natural.stop()
         this.speakingTo = from
-        this.speaker.speak(message.id, message.items.join(message.separator), message.lang, voice, rate)
+        this.speaker.speak(message.id, message.items.join(message.separator), message.lang, systemVoiceName(voice), rate)
         return
       }
-      case 'stop':
+      case 'speakNatural':
         this.speaker.stop()
+        this.speakingTo = from
+        this.natural.speak(message.id, message.items, message.voice, message.rate)
+        return
+      case 'naturalAt':
+        this.natural.at(message.id, message.index)
+        return
+      case 'downloadNatural':
+        this.voiceStore.download().catch(error => console.warn('Tutor: the natural voice did not download', error))
+        return
+      case 'dismissNatural':
+        void this.context.globalState.update(NATURAL_DISMISSED, true).then(() => this.postNatural())
+        return
+      case 'stop':
+        this.stopAll()
         return
       case 'setSettings':
         this.writeSettings(message.patch)
@@ -608,6 +652,17 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
     const c = vscode.workspace.getConfiguration('languageTutor')
     const hint = c.get<string>('wordHint', 'shift')
     return { voice: c.get<string>('voice', ''), rate: c.get<number>('rate', 1), wordHint: hint === 'hover' || hint === 'off' ? hint : 'shift' }
+  }
+
+  private naturalState(): NaturalState {
+    return { ...this.voiceStore.state, dismissed: this.context.globalState.get<boolean>(NATURAL_DISMISSED, false) }
+  }
+
+  /** Every view hears how the natural voice stands: the offer, the download's progress, ready. */
+  private postNatural(): void {
+    const message: ToView = { type: 'natural', state: this.naturalState() }
+    this.post(this.view?.webview, message)
+    for (const panel of this.documents.values()) this.post(panel.webview, message)
   }
 
   private async sendHostVoices(to: vscode.Webview): Promise<void> {
@@ -703,6 +758,29 @@ class TutorViewProvider implements vscode.WebviewViewProvider, vscode.Disposable
 </body>
 </html>`
   }
+}
+
+/** A release asset's body; the download is given up when it stalls for a minute. */
+async function openStream(url: string): Promise<AsyncIterable<Uint8Array>> {
+  const controller = new AbortController()
+  let timer = setTimeout(() => controller.abort(), STALL_MS)
+  const res = await fetch(url, { signal: controller.signal })
+  if (!res.ok || !res.body) {
+    clearTimeout(timer)
+    throw new Error(`HTTP ${res.status}`)
+  }
+  const body = res.body as unknown as AsyncIterable<Uint8Array>
+  return (async function* () {
+    try {
+      for await (const chunk of body) {
+        clearTimeout(timer)
+        timer = setTimeout(() => controller.abort(), STALL_MS)
+        yield chunk
+      }
+    } finally {
+      clearTimeout(timer)
+    }
+  })()
 }
 
 /** The person's message: English first when the tutor translated it, the correction when they wrote English. */

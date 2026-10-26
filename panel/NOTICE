@@ -9,3 +9,12 @@ Word dictionary (media/dict/*.json)
   The dictionary files are a derived work and are shared under the same license.
 
 Icons: @vscode/codicons, Creative Commons Attribution 4.0 (fonts) / MIT (code).
+
+Natural voice (downloaded on request from the voice-1 release, not shipped in the extension)
+  Kokoro-82M by hexgrad (https://huggingface.co/hexgrad/Kokoro-82M), Apache License 2.0;
+    ONNX export by onnx-community. Text rules in src/kokoro.ts follow kokoro-js (Apache License 2.0).
+  ONNX Runtime by Microsoft (https://onnxruntime.ai), MIT License; the extension bundles the
+    JavaScript of onnxruntime-node and downloads its native library.
+  phonemizer.js by Xenova (https://github.com/xenova/phonemizer.js), Apache License 2.0, which
+    contains eSpeak NG (https://github.com/espeak-ng/espeak-ng), GNU General Public License v3.0.
+    It runs as a separate file in the voice process; its source is at the links above.

@@ -1,0 +1,136 @@
+{
+  "release": "voice-1",
+  "files": [
+    {
+      "name": "kokoro.onnx",
+      "asset": "kokoro-v1.0-uint8.onnx.gz",
+      "size": 177464571,
+      "bytes": 155887931,
+      "sha256": "b44c5c0d90458a8d9175cea933ff6d8a6351b74f1e651060df48672f5a167e4f"
+    },
+    {
+      "name": "af_heart.bin",
+      "asset": "af_heart.bin.gz",
+      "size": 522240,
+      "bytes": 480455,
+      "sha256": "d583ccff3cdca2f7fae535cb998ac07e9fcb90f09737b9a41fa2734ec44a8f0b"
+    },
+    {
+      "name": "af_bella.bin",
+      "asset": "af_bella.bin.gz",
+      "size": 522240,
+      "bytes": 480914,
+      "sha256": "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b"
+    },
+    {
+      "name": "bf_emma.bin",
+      "asset": "bf_emma.bin.gz",
+      "size": 522240,
+      "bytes": 480741,
+      "sha256": "669fe0647f9dd04fcab92f1439a40eeb4c8b4ab1f82e4996fe3d918ce4a63b73"
+    },
+    {
+      "name": "am_michael.bin",
+      "asset": "am_michael.bin.gz",
+      "size": 522240,
+      "bytes": 479228,
+      "sha256": "1d1f21dd8da39c30705cd4c75d039d265e9bc4a2a93ed09bc9e1b1225eb95ba1"
+    },
+    {
+      "name": "bm_george.bin",
+      "asset": "bm_george.bin.gz",
+      "size": 522240,
+      "bytes": 481252,
+      "sha256": "c4b235a4c1f2cd3b939fed08b899ce9385638b763f7b73a59616c4fc9bd6c9bc"
+    },
+    {
+      "name": "phonemizer.cjs",
+      "asset": "phonemizer-1.2.1.cjs.gz",
+      "size": 1322383,
+      "bytes": 681745,
+      "sha256": "24d24f118e44dc60af797881617415be24d84de53c1fc1a8f7f9974ab52531cc"
+    }
+  ],
+  "runtimes": {
+    "win32-x64": [
+      {
+        "name": "onnxruntime_binding.node",
+        "asset": "ort-1.30.0-win32-x64-binding.node.gz",
+        "size": 298848,
+        "bytes": 95202,
+        "sha256": "ddd428464069b84414d34ec1796c7c2a69c33a976e4b0390692629e394f92fa1"
+      },
+      {
+        "name": "onnxruntime.dll",
+        "asset": "ort-1.30.0-win32-x64-onnxruntime.dll.gz",
+        "size": 28754232,
+        "bytes": 10616365,
+        "sha256": "508c362f5673483dd3a086379c392795b2e42d10d5e6f3f90ebd7ac21c97af67"
+      }
+    ],
+    "win32-arm64": [
+      {
+        "name": "onnxruntime_binding.node",
+        "asset": "ort-1.30.0-win32-arm64-binding.node.gz",
+        "size": 422200,
+        "bytes": 95655,
+        "sha256": "d8179924f15c2d3c1c8a75c50adf1671ec28c7f1cb0da9fc28b17daa02c5ecf5"
+      },
+      {
+        "name": "onnxruntime.dll",
+        "asset": "ort-1.30.0-win32-arm64-onnxruntime.dll.gz",
+        "size": 29815136,
+        "bytes": 10743453,
+        "sha256": "6c3a2abf5c6aca11c48a0d338a91af309f2266f25ce2e4084e6a87bbcb0fbfd0"
+      }
+    ],
+    "darwin-arm64": [
+      {
+        "name": "onnxruntime_binding.node",
+        "asset": "ort-1.30.0-darwin-arm64-binding.node.gz",
+        "size": 266840,
+        "bytes": 76758,
+        "sha256": "a3f993357759b06ae2411f70af60f5e041d04521ea7f0d12cb7546e411a527dd"
+      },
+      {
+        "name": "libonnxruntime.1.dylib",
+        "asset": "ort-1.30.0-darwin-arm64-libonnxruntime.1.dylib.gz",
+        "size": 44589928,
+        "bytes": 13031342,
+        "sha256": "685d2be5dba1309c89d3a5324b7fd06a5c42f1a61bfea32d14c4cc28d072121d"
+      }
+    ],
+    "linux-x64": [
+      {
+        "name": "onnxruntime_binding.node",
+        "asset": "ort-1.30.0-linux-x64-binding.node.gz",
+        "size": 389488,
+        "bytes": 138977,
+        "sha256": "ccdc60b981d93a490cf9513d3f583547252b6e285b72988a96a494f2f006c7b8"
+      },
+      {
+        "name": "libonnxruntime.so.1",
+        "asset": "ort-1.30.0-linux-x64-libonnxruntime.so.1.gz",
+        "size": 45828512,
+        "bytes": 17828881,
+        "sha256": "ffb75a925ba05e47b235bb66e3e3911714a80b328a9c9425539feb204aa32a23"
+      }
+    ],
+    "linux-arm64": [
+      {
+        "name": "onnxruntime_binding.node",
+        "asset": "ort-1.30.0-linux-arm64-binding.node.gz",
+        "size": 394648,
+        "bytes": 122397,
+        "sha256": "afec78dc11d38dc81605b068cefe1fc73ffe77ca240c15468aa40786150beac8"
+      },
+      {
+        "name": "libonnxruntime.so.1",
+        "asset": "ort-1.30.0-linux-arm64-libonnxruntime.so.1.gz",
+        "size": 25135496,
+        "bytes": 10351029,
+        "sha256": "1f549d46250b005580b597f4164984aaf75b3bcb9f3aeb07c7f8a8fe60b23c76"
+      }
+    ]
+  }
+}

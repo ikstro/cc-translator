@@ -1,12 +1,14 @@
 // Messages between the extension host and the Tutor webviews: the side panel,
 // and a document tab that shows one plan or one text the person picked.
+import type { WordTime } from './kokoro'
 import type { Gloss } from './lemma'
+import type { NaturalState } from './natural'
 import type { BlockState, ExchangeKind } from './session'
 import type { TutorSettings } from './render'
 import type { LearningState } from './learner'
 import type { UsageSummary } from './usage'
 
-export type { TutorSettings, BlockState, ExchangeKind, Gloss, LearningState, UsageSummary }
+export type { TutorSettings, BlockState, ExchangeKind, Gloss, LearningState, NaturalState, UsageSummary, WordTime }
 
 export type ViewBlock = {
   id: string
@@ -69,14 +71,26 @@ export type ToView =
   | { type: 'hostVoices'; voices: HostVoice[]; canSpeak: boolean; platform: string }
   | { type: 'progress'; id: number; pos: number; len: number }
   | { type: 'speakDone'; id: number }
+  /** The "Stop speaking" command. */
+  | { type: 'stop' }
   | { type: 'gloss'; word: string; gloss?: Gloss; missing?: GlossMissing }
   /** A dictionary finished downloading: words asked while it ran can be asked again. */
   | { type: 'dictReady' }
+  | { type: 'natural'; state: NaturalState }
+  /** One sentence of reading `id` in the natural voice: 24 kHz audio and when each of its words is spoken. */
+  | { type: 'naturalAudio'; id: number; index: number; samples: Float32Array; words: WordTime[] }
+  | { type: 'naturalFailed'; id: number; message: string }
 
 export type ToHost =
   | { type: 'lookup'; word: string }
   | { type: 'ready' }
   | { type: 'speak'; id: number; items: string[]; lang: string; separator: string }
+  /** Reads `items` in a natural voice; `naturalAt` says which of them started playing, so the next ones get made. */
+  | { type: 'speakNatural'; id: number; items: string[]; voice: string; rate: number }
+  | { type: 'naturalAt'; id: number; index: number }
+  | { type: 'downloadNatural' }
+  /** The person closed the offer of the natural voice. */
+  | { type: 'dismissNatural' }
   | { type: 'stop' }
   | { type: 'setSettings'; patch: Partial<TutorSettings> }
   /** On: this window's project learns (any other window stops). Off: the tutor is off everywhere. */

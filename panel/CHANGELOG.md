@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.0
+
+- A natural voice for English: Kokoro-82M, a small neural voice that runs on your computer. The panel offers it the first time you press Listen (one download of about 170 MB, then offline); Heart reads by default, four more voices in the settings. Words are highlighted by the model's own timing.
+- Tutor: Stop speaking also stops reading in the panel.
+
 ## 0.8.0
 
 - One window learns at a time: turning the tutor on in a window moves learning there; other windows show "Learning is on in … · Learn here" and translate only on a Translate tap.

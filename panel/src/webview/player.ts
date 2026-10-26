@@ -1,15 +1,23 @@
 // Reads sentences aloud, one element at a time, and highlights the sentence
-// being read and the word being spoken. Two routes: the webview's own voices
-// (word boundaries come from the speech events) or the platform synthesizer
-// in the extension host (word positions come back as progress messages).
+// being read and the word being spoken. Three routes: the natural voice
+// (audio made in the extension host's voice process, played here, words timed
+// by the model), the webview's own voices (word boundaries come from the
+// speech events) or the platform synthesizer in the extension host (word
+// positions come back as progress messages).
 
-import type { ToHost } from '../protocol'
+import { SAMPLE_RATE } from '../kokoro'
+import type { ToHost, WordTime } from '../protocol'
 import { itemAt, locate, wordAt } from '../textmap'
 
 const SEPARATOR = '\n\n'
 const WORD_HIGHLIGHT = 'tutor-word'
+/** How often the natural voice's highlight follows the audio; a timer, so it keeps going while the view is hidden. */
+const FOLLOW_MS = 40
 
 type Item = { el: HTMLElement; text: string; nodes: Text[]; lengths: number[] }
+
+/** A sentence of the natural voice queued in the audio output, from `at` to `end` on its clock. */
+type Scheduled = { index: number; at: number; end: number; words: WordTime[]; source: AudioBufferSourceNode }
 
 export type PlayerEnv = {
   /** BCP-47 tag of the language being read. */
@@ -18,6 +26,12 @@ export type PlayerEnv = {
   voice: () => SpeechSynthesisVoice | undefined
   rate: () => number
   hostCanSpeak: () => boolean
+  /** The natural voice to read with, by id, or undefined for a system voice. */
+  natural: () => string | undefined
+  /** The view's audio output; undefined until the person has touched the view (browsers start audio on a gesture). */
+  audio: () => AudioContext | undefined
+  /** The natural voice failed; the rest is read by a system voice. */
+  naturalFailed: (message: string) => void
 }
 
 function textItem(el: HTMLElement): Item {
@@ -47,9 +61,17 @@ export class Player {
   private items: Item[] = []
   private index = -1
   private follow = false
-  private route: 'web' | 'host' | null = null
+  private route: 'natural' | 'web' | 'host' | null = null
   private hostId = 0
   private utterance: SpeechSynthesisUtterance | undefined
+  // The natural voice: sentences that arrived and wait their turn, those queued in the audio output.
+  private audio: AudioContext | undefined
+  private arrived = new Map<number, { samples: Float32Array; words: WordTime[] }>()
+  private scheduled: Scheduled[] = []
+  private nextIndex = 0
+  private endAt = 0
+  private follower: number | undefined
+  private lastWord = ''
 
   constructor(
     private readonly post: (message: ToHost) => void,
@@ -57,19 +79,26 @@ export class Player {
     private readonly onChange: () => void,
   ) {}
 
-  /** Starts reading `els`; returns false when there is nothing to read or no voice to read it with. */
-  play(key: string, els: readonly HTMLElement[], options: { follow?: boolean } = {}): boolean {
+  /**
+   * Starts reading `els`; returns false when there is nothing to read or no
+   * voice to read it with. `system` skips the natural voice.
+   */
+  play(key: string, els: readonly HTMLElement[], options: { follow?: boolean; system?: boolean } = {}): boolean {
     this.stop()
     const items = els.map(textItem).filter(item => item.text.trim().length > 0)
     if (items.length === 0) return false
+    const natural = options.system ? undefined : this.env.natural()
+    const audio = natural ? this.env.audio() : undefined
     const voice = this.env.voice()
-    if (voice) this.route = 'web'
+    if (natural && audio) this.route = 'natural'
+    else if (voice) this.route = 'web'
     else if (this.env.hostCanSpeak()) this.route = 'host'
     else return false
     this.key = key
     this.items = items
     this.follow = options.follow ?? false
-    if (this.route === 'web' && voice) this.speakWeb(0, voice)
+    if (this.route === 'natural' && natural && audio) this.speakNatural(natural, audio)
+    else if (this.route === 'web' && voice) this.speakWeb(0, voice)
     else this.speakHost()
     this.onChange()
     return true
@@ -83,8 +112,26 @@ export class Player {
       this.utterance = undefined
       window.speechSynthesis.cancel()
     }
-    if (route === 'host') this.post({ type: 'stop' })
+    if (route === 'host' || route === 'natural') this.post({ type: 'stop' })
     this.onChange()
+  }
+
+  onNaturalAudio(id: number, index: number, samples: Float32Array, words: WordTime[]): void {
+    if (this.route !== 'natural' || id !== this.hostId) return
+    this.arrived.set(index, { samples, words })
+    this.queueArrived()
+  }
+
+  /** The natural voice failed: a system voice reads on from the sentence it had reached. */
+  onNaturalFailed(id: number, message: string): void {
+    if (this.route !== 'natural' || id !== this.hostId) return
+    const from = Math.max(0, this.index)
+    const key = this.key
+    const els = this.items.slice(from).map(item => item.el)
+    const follow = this.follow
+    this.reset()
+    this.env.naturalFailed(message)
+    if (!key || !this.play(key, els, { follow, system: true })) this.onChange()
   }
 
   /** The reader scrolled by hand: stop keeping the spoken sentence in view. */
@@ -122,6 +169,17 @@ export class Player {
     this.items = []
     this.index = -1
     this.route = null
+    for (const s of this.scheduled) {
+      try {
+        s.source.stop()
+      } catch {
+        // not started yet, or already over
+      }
+    }
+    this.scheduled = []
+    this.arrived.clear()
+    window.clearInterval(this.follower)
+    this.follower = undefined
   }
 
   private finish(): void {
@@ -167,6 +225,60 @@ export class Player {
     }
     this.utterance = u
     window.speechSynthesis.speak(u)
+  }
+
+  private speakNatural(voice: string, audio: AudioContext): void {
+    this.hostId += 1
+    this.audio = audio
+    this.nextIndex = 0
+    this.endAt = 0
+    this.lastWord = ''
+    if (audio.state === 'suspended') void audio.resume()
+    this.enter(0)
+    this.post({ type: 'speakNatural', id: this.hostId, items: this.items.map(item => item.text), voice, rate: this.env.rate() })
+    this.follower = window.setInterval(() => this.followAudio(), FOLLOW_MS)
+  }
+
+  /** Queues the sentences that arrived, in order, each starting where the one before ends. */
+  private queueArrived(): void {
+    const audio = this.audio
+    if (!audio) return
+    for (let next = this.arrived.get(this.nextIndex); next; next = this.arrived.get(this.nextIndex)) {
+      this.arrived.delete(this.nextIndex)
+      const buffer = audio.createBuffer(1, Math.max(1, next.samples.length), SAMPLE_RATE)
+      buffer.copyToChannel(next.samples as Float32Array<ArrayBuffer>, 0)
+      const source = audio.createBufferSource()
+      source.buffer = buffer
+      source.connect(audio.destination)
+      const at = Math.max(audio.currentTime + 0.05, this.endAt)
+      source.start(at)
+      this.scheduled.push({ index: this.nextIndex, at, end: at + buffer.duration, words: next.words, source })
+      this.endAt = at + buffer.duration
+      this.nextIndex += 1
+    }
+  }
+
+  /** Moves the highlight with the audio, tells the host which sentence plays, and ends after the last one. */
+  private followAudio(): void {
+    const audio = this.audio
+    if (this.route !== 'natural' || !audio) return
+    const t = audio.currentTime
+    const current = this.scheduled.find(s => t >= s.at && t < s.end)
+    if (current) {
+      if (current.index !== this.index) {
+        this.enter(current.index)
+        this.post({ type: 'naturalAt', id: this.hostId, index: current.index })
+      }
+      const item = this.items[current.index]
+      const word = current.words.find(w => t - current.at >= w.at && t - current.at < w.until)
+      const mark = word ? `${current.index}:${word.start}` : ''
+      if (word && item && mark !== this.lastWord) {
+        this.lastWord = mark
+        this.highlight(item, word.start, word.length)
+      }
+    } else if (this.nextIndex >= this.items.length && t >= this.endAt) {
+      this.finish()
+    }
   }
 
   private speakHost(): void {

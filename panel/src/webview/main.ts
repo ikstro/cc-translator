@@ -5,10 +5,12 @@
 // Markdown arrives rendered from the extension host.
 
 import { labelCode, langCode, scriptFor, scriptOf, voiceMatches } from '../languages'
+import { chosenNatural } from '../natural'
 import type {
   EmptyReason,
   HostVoice,
   LearningState,
+  NaturalState,
   ToHost,
   ToView,
   TutorSettings,
@@ -21,7 +23,7 @@ import type {
 import { el, html, icon, setIcon } from './dom'
 import { WordHover } from './hover'
 import { Player } from './player'
-import { sheetHeader, sheetHistory, sheetLanguages, sheetMain, type SheetContext, type SheetView } from './sheet'
+import { DOWNLOAD, downloadingLabel, sheetHeader, sheetHistory, sheetLanguages, sheetMain, type SheetContext, type SheetView } from './sheet'
 import { canOpenSpeechSettings, voiceSteps } from './voices'
 
 declare function acquireVsCodeApi(): {
@@ -56,6 +58,12 @@ const state = {
   /** The host's system, for the steps to add a voice; empty until the host says. */
   platform: '',
   webVoices: [] as SpeechSynthesisVoice[],
+  /** The natural voice: offered, downloading, here; undefined until the host says. */
+  natural: undefined as NaturalState | undefined,
+  /** The person pressed Listen in this view: the natural voice is offered from then on. */
+  listened: false,
+  /** The natural voice just finished downloading: say so until the next Listen. */
+  naturalJustReady: false,
   sheet: null as null | { view: SheetView; query: string },
   /** The exchange on screen; null follows the latest turn of the conversation. */
   viewing: null as string | null,
@@ -91,6 +99,7 @@ function voicesFor(code: string): string[] {
 }
 
 function hasVoice(code: string): boolean {
+  if (code === 'en' && state.natural?.status === 'ready') return true
   if (state.webVoices.some(v => voiceMatches(v.lang, code))) return true
   if (state.hostVoices === undefined) return true
   return state.hostCanSpeak && state.hostVoices.some(v => voiceMatches(v.lang, code))
@@ -102,6 +111,27 @@ function refreshWebVoices(): void {
   renderChrome()
 }
 
+/** The natural voice that reads now: English, downloaded, and not a system voice picked in Settings. */
+function naturalVoice(): string | undefined {
+  if (targetCode() !== 'en' || state.natural?.status !== 'ready') return undefined
+  return chosenNatural(state.config.voice)?.id
+}
+
+// Audio plays only once the person has touched the view; the first touch opens the output for good.
+let audioOut: AudioContext | undefined
+function openAudio(): void {
+  if (!audioOut) {
+    try {
+      audioOut = new AudioContext({ sampleRate: 24_000 })
+    } catch {
+      return
+    }
+  }
+  if (audioOut.state === 'suspended') void audioOut.resume()
+}
+window.addEventListener('pointerdown', openAudio, true)
+window.addEventListener('keydown', openAudio, true)
+
 // ---------------------------------------------------------------- player
 
 const player = new Player(
@@ -111,6 +141,9 @@ const player = new Player(
     voice: webVoice,
     rate: () => state.config.rate,
     hostCanSpeak: () => state.hostCanSpeak,
+    natural: naturalVoice,
+    audio: () => (audioOut && audioOut.state !== 'closed' ? audioOut : undefined),
+    naturalFailed: message => showHint([`The natural voice stopped (${message}). A system voice reads on.`], 10_000),
   },
   () => updatePlayButtons(),
 )
@@ -138,6 +171,25 @@ const offText = el('span', { class: 'banner-text' })
 const offButton = el('button', { class: 'primary-btn', onclick: () => post({ type: 'setLearning', on: true }) }, 'Turn on')
 const offBanner = el('div', { class: 'banner', hidden: true }, offText, offButton)
 
+// The offer of the natural voice, shown from the first Listen until it is here or closed.
+const voiceText = el('span', { class: 'banner-text' })
+const voiceButton = el('button', { class: 'primary-btn', onclick: () => downloadNatural() })
+const voiceClose = el(
+  'button',
+  {
+    class: 'icon-btn',
+    title: 'Not now',
+    'aria-label': 'Not now',
+    onclick: () => {
+      if (state.natural?.status === 'ready') state.naturalJustReady = false
+      else post({ type: 'dismissNatural' })
+      renderVoiceBanner()
+    },
+  },
+  icon('close'),
+)
+const voiceBanner = el('div', { class: 'banner voice-banner', hidden: true }, voiceText, voiceButton, voiceClose)
+
 /** The tutor translates in this window: it is on, and this window's project is the one learning. */
 function learningHere(): boolean {
   return (state.settings?.enabled ?? false) && state.learning.where === 'here'
@@ -154,7 +206,7 @@ const newReply = el('button', { class: 'pill', hidden: true, onclick: () => show
 const hint = el('div', { class: 'toast', role: 'status', hidden: true })
 const layer = el('div', { class: 'layer', hidden: true })
 
-root.append(header, offBanner, crumb, emptyState, list, newReply, hint, layer)
+root.append(header, offBanner, voiceBanner, crumb, emptyState, list, newReply, hint, layer)
 
 const hover = new WordHover({
   host: root,
@@ -181,9 +233,46 @@ function latestConversation(): ViewExchange | undefined {
   return undefined
 }
 
+function downloadNatural(): void {
+  if (state.natural) state.natural = { ...state.natural, status: 'downloading', progress: 0 }
+  post({ type: 'downloadNatural' })
+  renderVoiceBanner()
+  if (state.sheet?.view === 'main') renderSheet()
+}
+
+function renderVoiceBanner(): void {
+  const n = state.natural
+  const shown =
+    !!n &&
+    n.status !== 'unsupported' &&
+    targetCode() === 'en' &&
+    (n.status === 'ready' ? state.naturalJustReady : n.status === 'downloading' || (state.listened && !n.dismissed))
+  voiceBanner.hidden = !shown
+  if (!shown || !n) return
+  voiceButton.hidden = n.status !== 'absent' && n.status !== 'failed'
+  voiceClose.hidden = n.status === 'downloading'
+  switch (n.status) {
+    case 'absent':
+      voiceText.textContent = 'A natural voice sounds like a real person and reads offline.'
+      voiceButton.textContent = `Download · ${n.size} MB`
+      return
+    case 'failed':
+      voiceText.textContent = 'The natural voice did not download.'
+      voiceButton.textContent = 'Retry'
+      return
+    case 'downloading':
+      voiceText.textContent = `Downloading the natural voice… ${Math.round(n.progress * 100)}%`
+      return
+    case 'ready':
+      voiceText.textContent = 'The natural voice is ready. Press Listen to hear it.'
+      return
+  }
+}
+
 function renderChrome(): void {
   const s = state.settings
   const on = learningHere()
+  renderVoiceBanner()
   showAllButton.textContent = labelCode(s?.native)
   showAllButton.setAttribute('aria-pressed', String(state.showAll))
   showAllButton.title = state.showAll ? `Hide the ${s?.native ?? ''} lines` : `Show every ${s?.native ?? ''} line`
@@ -515,6 +604,11 @@ root.addEventListener('click', event => {
       player.stop()
       return
     }
+    if (key !== 'test') {
+      state.listened = true
+      state.naturalJustReady = false
+      renderVoiceBanner()
+    }
     if (!hasVoice(targetCode())) {
       noVoiceHint()
       return
@@ -570,6 +664,8 @@ function sheetContext(): SheetContext | undefined {
     voicesFor,
     hasVoice,
     platform: state.platform,
+    natural: state.natural,
+    downloadNatural,
     exchanges: state.exchanges,
     currentId: current?.id,
     timeOf,
@@ -717,6 +813,27 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
       return
     case 'speakDone':
       player.onHostDone(m.id)
+      return
+    case 'stop':
+      player.stop()
+      return
+    case 'natural': {
+      const was = state.natural
+      if (was?.status === 'downloading' && m.state.status === 'ready') state.naturalJustReady = true
+      state.natural = m.state
+      // Progress alone redraws only the offer and the voice list's entry; the sheet (and an open list) stays put.
+      if (was?.status === m.state.status && was.dismissed === m.state.dismissed) {
+        renderVoiceBanner()
+        const entry = layer.querySelector<HTMLOptionElement>(`option[value="${DOWNLOAD}"][disabled]`)
+        if (entry) entry.textContent = downloadingLabel(m.state.progress)
+      } else renderChrome()
+      return
+    }
+    case 'naturalAudio':
+      player.onNaturalAudio(m.id, m.index, m.samples, m.words)
+      return
+    case 'naturalFailed':
+      player.onNaturalFailed(m.id, m.message)
       return
   }
 })

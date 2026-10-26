@@ -3,7 +3,8 @@
 // language rows open a searchable list inside the same sheet.
 
 import { LANGUAGES, findLanguage, langCode, searchLanguages, type Language } from '../languages'
-import type { TutorSettings, Usage, UsageSummary, ViewConfig, ViewExchange } from '../protocol'
+import { NATURAL_PREFIX, NATURAL_VOICES, naturalLabel } from '../natural'
+import type { NaturalState, TutorSettings, Usage, UsageSummary, ViewConfig, ViewExchange } from '../protocol'
 import { el, icon } from './dom'
 import { canOpenSpeechSettings, voiceSteps } from './voices'
 
@@ -21,6 +22,9 @@ export type SheetContext = {
   hasVoice: (code: string) => boolean
   /** The host's system (win32, darwin, linux): which steps add a voice. */
   platform: string
+  /** How the natural voice stands; undefined until the host says. */
+  natural: NaturalState | undefined
+  downloadNatural: () => void
   exchanges: readonly ViewExchange[]
   currentId: string | undefined
   timeOf: (ts: string) => string
@@ -71,6 +75,13 @@ const SAMPLES: Record<string, string> = {
 }
 
 const RATES = [0.75, 1, 1.25]
+
+/** The voice list's entry that downloads the natural voice rather than picking a voice. */
+export const DOWNLOAD = '#download-natural'
+
+export function downloadingLabel(progress: number): string {
+  return `Natural voice: downloading… ${Math.round(progress * 100)}%`
+}
 
 function displayName(name: string): string {
   return findLanguage(name)?.native ?? name
@@ -228,15 +239,38 @@ export function sheetMain(ctx: SheetContext, sampleSlot: (sample: HTMLElement) =
   const voices = ctx.voicesFor(targetCode)
   const voiceGroup = el('div', { class: 'group' }, el('div', { class: 'group-label' }, 'Reading aloud'))
   if (voiced) {
+    // English: the natural voices first (or the way to get them), the system's below.
+    const natural = targetCode === 'en' && ctx.natural && ctx.natural.status !== 'unsupported' ? ctx.natural : undefined
+    const systemOptions = voices.map(name => el('option', { value: name, selected: name === ctx.config.voice }, name.replace(/^Microsoft /, '')))
+    const naturalOptions =
+      natural?.status === 'ready'
+        ? [
+            el(
+              'optgroup',
+              { label: 'Natural' },
+              ...NATURAL_VOICES.map(v => el('option', { value: NATURAL_PREFIX + v.id, selected: ctx.config.voice === NATURAL_PREFIX + v.id }, naturalLabel(v))),
+            ),
+          ]
+        : natural?.status === 'downloading'
+          ? [el('option', { value: DOWNLOAD, disabled: true }, downloadingLabel(natural.progress))]
+          : natural
+            ? [el('option', { value: DOWNLOAD }, `Natural voice: download ${natural.size} MB`)]
+            : []
     const select = el(
       'select',
       {
         class: 'select',
         'aria-label': 'Voice',
-        onchange: event => ctx.setVoice({ voice: (event.target as HTMLSelectElement).value }),
+        onchange: event => {
+          const picked = event.target as HTMLSelectElement
+          if (picked.value !== DOWNLOAD) return ctx.setVoice({ voice: picked.value })
+          picked.value = ctx.config.voice
+          ctx.downloadNatural()
+        },
       },
       el('option', { value: '' }, 'Automatic'),
-      ...voices.map(name => el('option', { value: name, selected: name === ctx.config.voice }, name.replace(/^Microsoft /, ''))),
+      ...naturalOptions,
+      ...(natural && systemOptions.length > 0 ? [el('optgroup', { label: 'System' }, ...systemOptions)] : systemOptions),
     )
     const sample = el('span', { class: 's sample-text' }, SAMPLES[targetCode] ?? SAMPLES.en ?? '')
     voiceGroup.append(
@@ -271,6 +305,7 @@ export function sheetMain(ctx: SheetContext, sampleSlot: (sample: HTMLElement) =
     'div',
     { class: 'group' },
     el('p', { class: 'credit' }, 'Word meanings on hover: WikDict, from Wiktionary (CC BY-SA). Offline, no tokens.'),
+    ctx.natural?.status === 'ready' ? el('p', { class: 'credit' }, 'Natural voice: Kokoro-82M (Apache-2.0), read on this computer.') : null,
   )
   return el('div', { class: 'sheet-body' }, languages, level, model, spending, voiceGroup, credit)
 }
